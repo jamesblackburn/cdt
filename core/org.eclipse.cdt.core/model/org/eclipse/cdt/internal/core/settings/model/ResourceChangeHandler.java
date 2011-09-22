@@ -7,7 +7,7 @@
  *
  * Contributors:
  * Intel Corporation - Initial API and implementation
- * Broadcom Corporation - Bug 311189 and clean-up
+ * Broadcom Corporation - Bug 311189, 358378 and clean-up
  * Wind River Systems - Bug 348569
  *******************************************************************************/
 package org.eclipse.cdt.internal.core.settings.model;
@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -45,6 +46,8 @@ import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.NullProgressMonitor;
+import org.eclipse.core.runtime.Path;
+import org.eclipse.cdt.core.settings.model.CSourceEntry;
 
 /**
  * This resource change handler notices external changes to the cdt projects
@@ -222,10 +225,10 @@ public class ResourceChangeHandler extends ResourceChangeHandlerBase implements 
 							continue;
 
 						for (ICConfigurationDescription cfg : prjDesc.getConfigurations()) {
+							ICSourceEntry[] entries = cfg.getSourceEntries();
 							try {
 								// Handle source entry change
 								if (from instanceof IFolder) {
-									ICSourceEntry[] entries = cfg.getSourceEntries();
 									if (to != null)
 										entries = checkMove(from.getFullPath(), to.getFullPath(), entries);
 									else
@@ -237,7 +240,33 @@ public class ResourceChangeHandler extends ResourceChangeHandlerBase implements 
 
 								// We deliberately don't remove output entries. These directories may not exist when
 								// the project is created and may be deleted at during a normal project lifecycle
+				
+								// If a moved resource is excluded them make sure it is moved as well (Bug 358378)
+								if(entries != null && to != null) {
+									ArrayList<ICSourceEntry> newEntryList = new ArrayList<ICSourceEntry>();
+									for(ICSourceEntry excludeEntry: entries)
+									{
+										IPath[] oldExclusions = excludeEntry.getExclusionPatterns();
+										LinkedHashSet<IPath> newExclusionSet = new LinkedHashSet<IPath>();
+										for(IPath exclu: oldExclusions)
+										{
+											IPath matchExclude = from.getProjectRelativePath().removeFirstSegments(new Path(excludeEntry.getName()).segmentCount()-1);
 
+											if(matchExclude.equals(exclu))
+											{
+												IPath toExclude = to.getProjectRelativePath().removeFirstSegments(new Path(excludeEntry.getName()).segmentCount()-1);
+												newExclusionSet.add(toExclude);
+											}
+											else
+												newExclusionSet.add(exclu);						
+										}
+										newEntryList.add(new CSourceEntry(excludeEntry.getFullPath(), 
+												newExclusionSet.toArray(new IPath[newExclusionSet.size()]),
+												excludeEntry.getFlags()));
+									}
+									cfg.setSourceEntries(newEntryList.toArray(new ICSourceEntry[newEntryList.size()]));
+								}
+								
 								// Handle resource description change
 								ICResourceDescription rcDescription = cfg.getResourceDescription(from.getProjectRelativePath(), true);
 								if(rcDescription != null)

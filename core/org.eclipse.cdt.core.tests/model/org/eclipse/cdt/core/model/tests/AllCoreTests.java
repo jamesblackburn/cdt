@@ -60,6 +60,7 @@ public class AllCoreTests {
 		suite.addTest(AsmModelBuilderTest.suite());
 		suite.addTest(CModelBuilderBugsTest.suite());
 		suite.addTest(Bug311189.suite());
+		suite.addTest(Bug358378.suite());
         return suite;
 
     }
