@@ -12,7 +12,6 @@
 package org.eclipse.cdt.internal.core.settings.model;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -28,6 +27,7 @@ import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICLanguageSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionListener;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICStorageElement;
 import org.eclipse.cdt.internal.core.settings.model.CExternalSettinsDeltaCalculator.ExtSettingsDelta;
 import org.eclipse.core.resources.IProject;
@@ -407,9 +407,9 @@ public class CExternalSettingsManager implements ICExternalSettingsListener, ICP
 										// Ensure the newly discovered settings are in the right order...
 										// we do this by removing and re-adding the references list
 										ICConfigurationDescription desc = cr.getConfguration(true);
-										Map<String, String> references = desc.getReferenceInfo();
-										desc.setReferenceInfo(Collections.EMPTY_MAP);
-										cr.getConfguration(true).setReferenceInfo(references);
+										ICReferenceEntry[] references = desc.getReferenceEntries();
+										desc.setReferenceEntries(new ICReferenceEntry[0]);
+										cr.getConfguration(true).setReferenceEntries(references);
 									}
 								}
 							}
@@ -577,7 +577,7 @@ public class CExternalSettingsManager implements ICExternalSettingsListener, ICP
 			// If the project description has no references, short-circuit:
 			boolean needsReconcile = false;
 			for (ICConfigurationDescription desc : event.getNewCProjectDescription().getConfigurations()) {
-				if (!desc.getReferenceInfo().isEmpty() || 
+				if (desc.getReferenceEntries().length > 0 ||
 						(desc.getExternalSettingsProviderIds() != null && desc.getExternalSettingsProviderIds().length > 0)) {
 					needsReconcile = true;
 					break;
@@ -606,9 +606,9 @@ public class CExternalSettingsManager implements ICExternalSettingsListener, ICP
 								// Ensure the newly discovered settings are in the right order...
 								// we do this by removing and re-adding the references list
 								ICConfigurationDescription desc = cfgCr.getConfguration(true);
-								Map<String, String> references = desc.getReferenceInfo();
-								desc.setReferenceInfo(Collections.EMPTY_MAP);
-								cfgCr.getConfguration(true).setReferenceInfo(references);
+								ICReferenceEntry[] references = desc.getReferenceEntries();
+								desc.setReferenceEntries(new ICReferenceEntry[0]);
+								cfgCr.getConfguration(true).setReferenceEntries(references);
 								changed = true;
 							}
 						}

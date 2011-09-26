@@ -45,6 +45,9 @@ class ResourceChangeHandler2 extends ResourceChangeHandlerBase{
 		public void done() {
 		}
 
+		public void handleProjectOpen(IProject project) {
+		}
+
 		public void handleProjectClose(IProject project) {
 			sendClose(project);
 			try {

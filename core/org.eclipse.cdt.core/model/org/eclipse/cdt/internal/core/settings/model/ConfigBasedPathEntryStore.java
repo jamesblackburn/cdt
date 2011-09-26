@@ -21,6 +21,7 @@ import org.eclipse.cdt.core.ICExtensionReference;
 import org.eclipse.cdt.core.model.CModelException;
 import org.eclipse.cdt.core.model.CoreModel;
 import org.eclipse.cdt.core.model.ICProject;
+import org.eclipse.cdt.core.model.IContainerEntry;
 import org.eclipse.cdt.core.model.IPathEntry;
 import org.eclipse.cdt.core.resources.IPathEntryStore;
 import org.eclipse.cdt.core.resources.IPathEntryStoreListener;
@@ -31,6 +32,7 @@ import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICExternalSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionListener;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.extension.CConfigurationData;
 import org.eclipse.cdt.core.settings.model.util.PathEntryTranslator;
 import org.eclipse.cdt.core.settings.model.util.PathEntryTranslator.PathEntryCollector;
@@ -147,8 +149,8 @@ public class ConfigBasedPathEntryStore implements IPathEntryStore, ICProjectDesc
 							setting.getCompatibleExtensions(),
 							setting.getEntries());
 				}
-				Map<String, String> refMap = rInfo.getRefProjectsMap();
-				cfgDes.setReferenceInfo(refMap);
+				ICReferenceEntry[] refs = rInfo.getProjectReferences();
+				cfgDes.setReferenceEntries(refs);
 
 				CoreModel.getDefault().setProjectDescription(fProject, des);
 			}

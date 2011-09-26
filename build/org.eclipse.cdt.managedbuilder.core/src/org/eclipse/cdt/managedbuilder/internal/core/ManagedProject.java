@@ -304,6 +304,19 @@ public class ManagedProject extends BuildObject implements IManagedProject, IBui
 		return configMap.get(id);
 	}
 	
+	/*
+	 * (non-Javadoc)
+	 * @see org.eclipse.cdt.managedbuilder.core.IManagedProject#getConfigurationByName(java.lang.String)
+	 */
+	public IConfiguration getConfigurationByName(String name) {
+		synchronized (configMap) {
+			for (IConfiguration cfg : configMap.values())
+				if (name.equals(cfg.getName()))
+					return cfg;
+		}
+		return null;
+	}
+
 	/* (non-Javadoc)
 	 * @see org.eclipse.cdt.managedbuilder.core.IManagedProject#getConfigurations()
 	 */

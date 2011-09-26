@@ -18,6 +18,7 @@ import org.eclipse.cdt.build.internal.core.scannerconfig.CfgDiscoveredPathManage
 import org.eclipse.cdt.managedbuilder.internal.buildmodel.BuildStateManager;
 import org.eclipse.cdt.managedbuilder.internal.buildmodel.DbgUtil;
 import org.eclipse.cdt.managedbuilder.internal.core.BuilderFactory;
+import org.eclipse.cdt.managedbuilder.internal.core.CommonBuilder;
 import org.eclipse.cdt.managedbuilder.internal.core.GeneratedMakefileBuilder;
 import org.eclipse.cdt.managedbuilder.internal.dataprovider.ProjectConverter;
 import org.eclipse.cdt.managedbuilder.internal.scannerconfig.ManagedBuildCPathEntryContainer;
@@ -232,7 +233,16 @@ public class ManagedBuilderCorePlugin extends Plugin {
 	 * @since 7.0
 	 */
 	public static void info(String str) {
-		log(new Status(IStatus.INFO, getUniqueIdentifier(), IStatus.OK, str, new Exception()));
+		log(new Status(IStatus.INFO, getUniqueIdentifier(), IStatus.OK, str, null));
+	}
+
+	/**
+	 * Log a String info message to the log
+	 * @param str string info message to log
+	 * @since 7.0
+	 */
+	public static void warn(String str) {
+		log(new Status(IStatus.WARNING, getUniqueIdentifier(), IStatus.OK, str, null));
 	}
 
 	/**
@@ -251,6 +261,7 @@ public class ManagedBuilderCorePlugin extends Plugin {
 			String builder = Platform.getDebugOption(BUILDER);
 			if (builder != null) {
 				GeneratedMakefileBuilder.VERBOSE = builder.equalsIgnoreCase("true") ; //$NON-NLS-1$
+				CommonBuilder.VERBOSE = GeneratedMakefileBuilder.VERBOSE;
 			}
 			String buildModel = Platform.getDebugOption(BUILD_MODEL);
 			if(buildModel != null){
@@ -263,6 +274,10 @@ public class ManagedBuilderCorePlugin extends Plugin {
 		return BuilderFactory.createBuilders(project, args);
 	}
 	
+	public static IBuilder[] createBuilders(IProject project, IConfiguration cfg, Map<String, String> args){
+		return BuilderFactory.createBuilders(project, cfg, args);
+	}
+
 	public static IBuilder createCustomBuilder(IConfiguration cfg, String builderId) throws CoreException{
 		return BuilderFactory.createCustomBuilder(cfg, builderId);
 	}

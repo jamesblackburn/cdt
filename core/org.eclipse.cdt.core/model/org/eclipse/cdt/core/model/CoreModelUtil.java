@@ -24,6 +24,7 @@ import org.eclipse.cdt.core.index.IndexLocationFactory;
 import org.eclipse.cdt.core.settings.model.ICConfigExtensionReference;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICTargetPlatformSetting;
 import org.eclipse.cdt.internal.core.model.BinaryParserConfig;
 import org.eclipse.cdt.internal.core.resources.ResourceLookup;
@@ -694,13 +695,13 @@ public class CoreModelUtil {
     	List<ICConfigurationDescription> result = new ArrayList<ICConfigurationDescription>();
 
     	if (cfgDes != null) {
-    		Map<String, String> map = cfgDes.getReferenceInfo();
-    		if (map.size() != 0) {
+			ICReferenceEntry[] refs = cfgDes.getReferenceEntries();
+			if (refs.length > 0) {
     			IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
     			CoreModel model = CoreModel.getDefault();
-    			for (Map.Entry<String,String> entry : map.entrySet()) {
-    				String projName = entry.getKey();
-    				String cfgId = entry.getValue();
+				for (ICReferenceEntry entry : refs) {
+					String projName = entry.getProject();
+					String cfgId = entry.getConfiguration();
     				IProject project = root.getProject(projName);
     				if (!project.exists())
     					continue;

@@ -21,7 +21,7 @@ import org.eclipse.core.runtime.Path;
 
 public abstract class APathEntry extends PathEntry {
 
-	public static IPath[] NO_EXCLUSION_PATTERNS = {};
+	public static final IPath[] NO_EXCLUSION_PATTERNS = {};
 	IPath[] exclusionPatterns;
 	IPath basePath;
 	IPath baseRef;

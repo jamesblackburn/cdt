@@ -37,6 +37,9 @@ public class BuildStateManager {
 		public void done() {
 		}
 
+		public void handleProjectOpen(IProject project) {
+		}
+
 		public void handleProjectClose(IProject project) {
 		}
 

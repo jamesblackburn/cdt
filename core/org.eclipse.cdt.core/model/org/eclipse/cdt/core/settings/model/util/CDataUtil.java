@@ -373,7 +373,9 @@ public class CDataUtil {
 			IScopeContext projectScope = new ProjectScope(project);
 			try {
 				settings = type.getSettings(projectScope);
-			} catch (Exception e) {}
+			} catch (CoreException e) {
+				CCorePlugin.log(e);
+			}
 			if (settings != null) {
 				String[] specs = settings.getFileSpecs(IContentType.FILE_EXTENSION_SPEC);
 				if (specs.length > 0) {

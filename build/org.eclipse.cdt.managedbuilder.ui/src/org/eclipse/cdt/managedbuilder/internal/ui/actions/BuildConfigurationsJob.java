@@ -11,10 +11,10 @@
 package org.eclipse.cdt.managedbuilder.internal.ui.actions;
 
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
-import org.eclipse.cdt.managedbuilder.core.IConfiguration;
-import org.eclipse.cdt.managedbuilder.core.ManagedBuildManager;
 import org.eclipse.cdt.managedbuilder.internal.ui.Messages;
 import org.eclipse.cdt.ui.CUIPlugin;
+import org.eclipse.core.resources.IBuildConfiguration;
+import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
@@ -29,7 +29,7 @@ import com.ibm.icu.text.MessageFormat;
  * A job to build CDT build configurations.
  */
 public class BuildConfigurationsJob extends Job {
-	private ICConfigurationDescription[] cfgDescriptions;
+	private IBuildConfiguration[] configurations;
 	private int cleanKind;
 	private int buildKind;
 
@@ -58,7 +58,12 @@ public class BuildConfigurationsJob extends Job {
 	public BuildConfigurationsJob(ICConfigurationDescription[] cfgDescriptions, int cleanKind, int buildKind) {
 		super(composeJobName(cfgDescriptions, buildKind==0));
 
-		this.cfgDescriptions = cfgDescriptions;
+		configurations = new IBuildConfiguration[cfgDescriptions.length];
+		for (int i = 0; i < cfgDescriptions.length; i++) {
+			IProject project = cfgDescriptions[i].getProjectDescription().getProject();
+			configurations[i] = ResourcesPlugin.getWorkspace().newBuildConfig(project.getName(), cfgDescriptions[i].getName());
+		}
+		
 		this.cleanKind = cleanKind;
 		this.buildKind = buildKind;
 	}
@@ -71,16 +76,12 @@ public class BuildConfigurationsJob extends Job {
 		// Setup the global build console
 		CUIPlugin.getDefault().startGlobalConsole();
 
-		IConfiguration[] cfgs = new IConfiguration[cfgDescriptions.length];
-		for (int i=0; i<cfgDescriptions.length; i++) {
-			cfgs[i] = ManagedBuildManager.getConfigurationForDescription(cfgDescriptions[i]);
-		}
 		try {
 			if (cleanKind==IncrementalProjectBuilder.CLEAN_BUILD) {
-				ManagedBuildManager.buildConfigurations(cfgs, null, monitor, true, cleanKind);
+				ResourcesPlugin.getWorkspace().build(configurations, IncrementalProjectBuilder.CLEAN_BUILD, true, monitor);
 			}
 			if (buildKind!=0) {
-				ManagedBuildManager.buildConfigurations(cfgs, null, monitor, true, buildKind);
+				ResourcesPlugin.getWorkspace().build(configurations, buildKind, true, monitor);
 			}
 		} catch (CoreException e) {
 			return new Status(IStatus.ERROR, Messages.BuildConfigurationsJob_BuildError, e.getLocalizedMessage());

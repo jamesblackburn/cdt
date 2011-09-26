@@ -7,6 +7,7 @@
  *
  * Contributors:
  * Intel Corporation - Initial API and implementation
+ * James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.internal.core.settings.model;
 
@@ -23,6 +24,11 @@ import org.eclipse.cdt.core.settings.model.util.CDataUtil;
 import org.eclipse.cdt.core.settings.model.util.EntryStore;
 import org.eclipse.cdt.core.settings.model.util.KindBasedStore;
 
+/**
+ * Language Settings are per Language configuration settings
+ * proxied by some build model, contained within a particular
+ * configuration description
+ */
 public class CLanguageSetting extends CDataProxy implements
 		ICLanguageSetting {
 

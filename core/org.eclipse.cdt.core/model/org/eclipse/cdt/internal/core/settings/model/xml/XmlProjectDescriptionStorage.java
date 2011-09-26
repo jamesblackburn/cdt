@@ -413,7 +413,7 @@ public class XmlProjectDescriptionStorage extends AbstractCProjectDescriptionSto
 			if (converter != null) {
 				CProjectDescription convertedDes = (CProjectDescription) converter.convertProject(project, eDes, ownerId, des);
 				if (convertedDes != null) {
-					CProjectDescriptionManager.getInstance().checkHandleActiveCfgChange(convertedDes, null, eDes, new NullProgressMonitor());
+					CProjectDescriptionManager.getInstance().checkHandleActiveCfgChange(convertedDes, null, context, new NullProgressMonitor());
 					des = convertedDes;
 				}
 			}

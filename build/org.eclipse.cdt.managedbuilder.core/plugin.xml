@@ -29,9 +29,10 @@
          name="%CommonBuilder.name"
          point="org.eclipse.core.resources.builders">
       <builder
-            hasNature="true"
             callOnEmptyDelta="true"
-            isConfigurable="true">
+            hasNature="true"
+            isConfigurable="true"
+            supportsConfigurations="true">
          <!--run
                class="org.eclipse.cdt.managedbuilder.internal.core.GeneratedMakefileBuilder">
          </run-->
@@ -477,7 +478,8 @@
       <builder
             callOnEmptyDelta="true"
             hasNature="true"
-            isConfigurable="true">
+            isConfigurable="true"
+            supportsConfigurations="true">
          <run
                class="org.eclipse.cdt.build.core.scannerconfig.ScannerConfigBuilder">
          </run>

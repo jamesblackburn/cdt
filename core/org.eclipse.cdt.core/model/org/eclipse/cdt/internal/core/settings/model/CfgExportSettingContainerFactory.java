@@ -11,6 +11,8 @@
  *******************************************************************************/
 package org.eclipse.cdt.internal.core.settings.model;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -22,11 +24,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.settings.model.CExternalSetting;
 import org.eclipse.cdt.core.settings.model.CProjectDescriptionEvent;
+import org.eclipse.cdt.core.settings.model.CReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICDescriptionDelta;
 import org.eclipse.cdt.core.settings.model.ICExternalSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionListener;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.internal.core.settings.model.CExternalSettingsManager.CContainerRef;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -38,7 +42,8 @@ import org.eclipse.core.runtime.CoreException;
  * The user controls this via RefsTab.  This External settings factory listens
  * for CProjectDescription model changes and notifies the {@link CExternalSettingsManager},
  * which is a listener, of changes to the set of external settings. 
- * {@link ICConfigurationDescription#setReferenceInfo(Map)} and {@link ICConfigurationDescription#getReferenceInfo()}
+ * {@link ICConfigurationDescription#setReferenceEntries(ICReferenceEntry[])} and
+ * {@link ICConfigurationDescription#getReferenceEntries()}
  */
 public class CfgExportSettingContainerFactory extends
 		CExternalSettingContainerFactoryWithListener implements ICProjectDescriptionListener {
@@ -147,35 +152,40 @@ public class CfgExportSettingContainerFactory extends
 		return new CContainerRef(FACTORY_ID, createId(projName, cfgId));
 	}
 	
-	public static Map<String, String> getReferenceMap(ICConfigurationDescription cfg){
-		CContainerRef[] refs = CExternalSettingsManager.getInstance().getReferences(cfg, FACTORY_ID);
-		Map<String, String> map = new LinkedHashMap<String, String>();
-		for(int i = 0; i < refs.length; i++){
+	/**
+	 * Returns an array of references 
+	 * @param cfg
+	 * @return an array of {@link ICReferenceEntry} in the {@link ICConfigurationDescription}
+	 */
+	public static Collection<ICReferenceEntry> getReferences(ICConfigurationDescription cfg){
+		CContainerRef[] contRefs = CExternalSettingsManager.getInstance().getReferences(cfg, FACTORY_ID);
+		ArrayList<ICReferenceEntry> refs = new ArrayList<ICReferenceEntry>(contRefs.length);		
+		for (CContainerRef cref : contRefs) {
 			try {
-				String[] r = parseId(refs[i].getContainerId());
-				map.put(r[0], r[1]);
+				String[] r = parseId(cref.getContainerId());
+				refs.add(new CReferenceEntry(r[0], r[1]));
 			} catch (CoreException e) {
 				CCorePlugin.log(e);
 			}
 		}
-		return map;
+		return refs;
 	}
 
-	public static void setReferenceMap(ICConfigurationDescription cfg, Map<String, String> map){
-		Map<String, String> oldRefs = getReferenceMap(cfg);
-		Map<String, String> newRefs = new LinkedHashMap<String, String>(map);
+	public static void setReferences(ICConfigurationDescription cfg, ICReferenceEntry[] refs){
+		Collection<ICReferenceEntry> oldRefs = getReferences(cfg);
+		Collection<ICReferenceEntry> newRefs = new ArrayList<ICReferenceEntry>(Arrays.asList(refs));
 		
 		// We need to preserve order. The API we have with the external settings manager allows us to
 		// add and remove individual items.  
 		// In the future this could be fixed, but for the moment, remove and replace all the referenced items
 		// from the first item that doens't match.
 
-		Iterator<Map.Entry<String, String>> oldIter = oldRefs.entrySet().iterator();
-		Iterator<Map.Entry<String, String>> newIter = newRefs.entrySet().iterator();
+		Iterator<ICReferenceEntry> oldIter = oldRefs.iterator();
+		Iterator<ICReferenceEntry> newIter = newRefs.iterator();
 		
 		while (oldIter.hasNext() && newIter.hasNext()) {
-			Map.Entry<String, String> oldEntry = oldIter.next();
-			Map.Entry<String, String> newEntry = newIter.next();
+			ICReferenceEntry oldEntry = oldIter.next();
+			ICReferenceEntry newEntry = newIter.next();
 			if (!oldEntry.equals(newEntry))
 				break;
 			oldIter.remove();
@@ -183,11 +193,11 @@ public class CfgExportSettingContainerFactory extends
 		}
 
 		// Now remove all the remaining old entries
-		for (Map.Entry<String,String> entry : oldRefs.entrySet())
-			removeReference(cfg, entry.getKey(), entry.getValue());
+		for (ICReferenceEntry ref : oldRefs)
+			removeReference(cfg, ref.getProject(), ref.getConfiguration());
 		// And add the new entries
-		for (Map.Entry<String,String> entry : newRefs.entrySet())
-			createReference(cfg, entry.getKey(), entry.getValue());
+		for (ICReferenceEntry ref : newRefs)
+			createReference(cfg, ref.getProject(), ref.getConfiguration());
 	}
 
 	/**

@@ -77,6 +77,10 @@ public class ResourceChangeHandler extends ResourceChangeHandlerBase implements 
 			fMngr.projectClosedRemove(project);
 		}
 
+		public void handleProjectOpen(IProject project) {
+			fMngr.projectOpened(project);
+		}
+
 		/**
 		 * Check and return a new ICSourceEntry[] when a path has been changed in a project
 		 * @param fromFullPath

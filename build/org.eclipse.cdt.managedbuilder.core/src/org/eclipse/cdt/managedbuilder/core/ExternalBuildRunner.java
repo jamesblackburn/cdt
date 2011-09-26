@@ -29,7 +29,6 @@ import org.eclipse.cdt.core.ICommandLauncher;
 import org.eclipse.cdt.core.IMarkerGenerator;
 import org.eclipse.cdt.core.envvar.IEnvironmentVariable;
 import org.eclipse.cdt.core.envvar.IEnvironmentVariableManager;
-import org.eclipse.cdt.core.model.ICModelMarker;
 import org.eclipse.cdt.core.resources.IConsole;
 import org.eclipse.cdt.core.resources.RefreshScopeManager;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
@@ -48,13 +47,13 @@ import org.eclipse.cdt.newmake.internal.core.StreamMonitor;
 import org.eclipse.cdt.utils.CommandLineUtil;
 import org.eclipse.cdt.utils.EFSExtensionManager;
 import org.eclipse.cdt.utils.PathUtil;
-import org.eclipse.core.resources.IMarker;
+import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -102,7 +101,7 @@ public class ExternalBuildRunner extends AbstractBuildRunner {
 				OutputStream cos = console.getOutputStream();
 				StringBuffer buf = new StringBuffer();
 
-				String[] consoleHeader = new String[3];
+				String[] consoleHeader = new String[4];
 				switch (kind) {
 					case IncrementalProjectBuilder.FULL_BUILD:
 					case IncrementalProjectBuilder.INCREMENTAL_BUILD:
@@ -116,6 +115,7 @@ public class ExternalBuildRunner extends AbstractBuildRunner {
 
 				consoleHeader[1] = configuration.getName();
 				consoleHeader[2] = project.getName();
+				consoleHeader[3] = projectBuilder.getBuildConfig().getName();
 				buf.append(NEWLINE);
 				buf.append(ManagedMakeMessages.getFormattedString(CONSOLE_HEADER, consoleHeader)).append(NEWLINE);
 				buf.append(NEWLINE);
@@ -129,12 +129,6 @@ public class ExternalBuildRunner extends AbstractBuildRunner {
 				cos.write(buf.toString().getBytes());
 				cos.flush();
 
-				// remove all markers for this project
-				IWorkspace workspace = project.getWorkspace();
-				IMarker[] markers = project.findMarkers(ICModelMarker.C_MODEL_PROBLEM_MARKER, true, IResource.DEPTH_INFINITE);
-				if (markers != null)
-					workspace.deleteMarkers(markers);
-
 				URI workingDirectoryURI = ManagedBuildManager.getBuildLocationURI(configuration, builder);
 				final String pathFromURI = EFSExtensionManager.getDefault().getPathFromURI(workingDirectoryURI);
 				if(pathFromURI == null) {
@@ -142,6 +136,19 @@ public class ExternalBuildRunner extends AbstractBuildRunner {
 				}
 				
 				IPath workingDirectory = new Path(pathFromURI);
+
+				// Remove build directory if managedbuild is on
+				if (kind == IncrementalProjectBuilder.CLEAN_BUILD && builder.isManagedBuildOn()) {
+					IPath buildFullPath = ManagedBuildManager.getBuildFullPath(configuration, builder);
+					IFolder buildDir = ResourcesPlugin.getWorkspace().getRoot().getFolder(buildFullPath);
+					// try the brute force approach first
+					String status = ManagedMakeMessages.getFormattedString("ManagedMakeBuilder.message.clean.deleting.output", buildDir.getName()); //$NON-NLS-1$
+					monitor.subTask(status);
+					// FIXME: assert as I don't trust this...
+					Assert.isTrue(buildDir.getParent().equals(project) && buildDir.getName().equals(configuration.getName()), "Expected: " + configuration.getName() + " Got: " + buildDir.getName());
+					buildDir.delete(false, monitor);
+					return true;
+				}
 
 				String[] targets = getTargets(kind, builder);
 				if (targets.length != 0 && targets[targets.length - 1].equals(builder.getCleanBuildTarget()))

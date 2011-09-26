@@ -14,7 +14,7 @@ import org.eclipse.cdt.core.settings.model.ACSettingEntry;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
 
 public class EntryNameKey {
-	ICSettingEntry fEntry;
+	final ICSettingEntry fEntry;
 		
 	public EntryNameKey(ICSettingEntry entry){
 		fEntry = entry;

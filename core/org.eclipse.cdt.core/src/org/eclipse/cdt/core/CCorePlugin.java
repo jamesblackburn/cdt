@@ -20,6 +20,8 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
 
@@ -53,6 +55,7 @@ import org.eclipse.cdt.internal.core.envvar.EnvironmentVariableManager;
 import org.eclipse.cdt.internal.core.model.CModelManager;
 import org.eclipse.cdt.internal.core.model.Util;
 import org.eclipse.cdt.internal.core.pdom.PDOMManager;
+import org.eclipse.cdt.internal.core.resources.BuildConfigReconciler;
 import org.eclipse.cdt.internal.core.resources.ResourceLookup;
 import org.eclipse.cdt.internal.core.settings.model.CProjectDescriptionManager;
 import org.eclipse.cdt.internal.core.settings.model.ExceptionFactory;
@@ -322,6 +325,7 @@ public class CCorePlugin extends Plugin {
 
             fNewCProjectDescriptionManager.shutdown();
             ResourceLookup.shutdown();
+            BuildConfigReconciler.shutdown();
             
             savePluginPreferences();
 		} finally {
@@ -341,6 +345,7 @@ public class CCorePlugin extends Plugin {
 		configurePluginDebugOptions();
         PositionTrackerManager.getInstance().install();
         ResourceLookup.startup();
+        BuildConfigReconciler.startup();
         
         // new project model needs to register the resource listener first.
         CProjectDescriptionManager descManager = CProjectDescriptionManager.getInstance();

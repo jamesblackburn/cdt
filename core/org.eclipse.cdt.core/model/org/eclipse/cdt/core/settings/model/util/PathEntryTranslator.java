@@ -46,6 +46,7 @@ import org.eclipse.cdt.core.settings.model.CLibraryFileEntry;
 import org.eclipse.cdt.core.settings.model.CMacroEntry;
 import org.eclipse.cdt.core.settings.model.CMacroFileEntry;
 import org.eclipse.cdt.core.settings.model.COutputEntry;
+import org.eclipse.cdt.core.settings.model.CReferenceEntry;
 import org.eclipse.cdt.core.settings.model.CSourceEntry;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICExclusionPatternPathEntry;
@@ -53,6 +54,7 @@ import org.eclipse.cdt.core.settings.model.ICExternalSetting;
 import org.eclipse.cdt.core.settings.model.ICIncludePathEntry;
 import org.eclipse.cdt.core.settings.model.ICLanguageSettingEntry;
 import org.eclipse.cdt.core.settings.model.ICOutputEntry;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICSettingBase;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
 import org.eclipse.cdt.core.settings.model.ICSourceEntry;
@@ -86,6 +88,10 @@ import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
 
+/**
+ * Class responsible for translating path entries from an ICStorageElement
+ * backing store to IPathEntry
+ */
 public class PathEntryTranslator {
 	public static final int OP_ADD = 1;
 	public static final int OP_REMOVE = 2;
@@ -95,24 +101,24 @@ public class PathEntryTranslator {
 	public static final int INCLUDE_USER = 1 << 1;
 	public static final int INCLUDE_ALL = INCLUDE_BUILT_INS | INCLUDE_USER;
 
-	static String PATH_ENTRY = "pathentry"; //$NON-NLS-1$
-	static String ATTRIBUTE_KIND = "kind"; //$NON-NLS-1$
-	static String ATTRIBUTE_PATH = "path"; //$NON-NLS-1$
-	static String ATTRIBUTE_BASE_PATH = "base-path"; //$NON-NLS-1$
-	static String ATTRIBUTE_BASE_REF = "base-ref"; //$NON-NLS-1$
-	static String ATTRIBUTE_EXPORTED = "exported"; //$NON-NLS-1$
-	static String ATTRIBUTE_SOURCEPATH = "sourcepath"; //$NON-NLS-1$
-	static String ATTRIBUTE_ROOTPATH = "roopath"; //$NON-NLS-1$
-	static String ATTRIBUTE_PREFIXMAPPING = "prefixmapping"; //$NON-NLS-1$
-	static String ATTRIBUTE_EXCLUDING = "excluding"; //$NON-NLS-1$
-	static String ATTRIBUTE_INCLUDE = "include"; //$NON-NLS-1$
-	static String ATTRIBUTE_INCLUDE_FILE= "include-file"; //$NON-NLS-1$
-	static String ATTRIBUTE_LIBRARY = "library"; //$NON-NLS-1$
-	static String ATTRIBUTE_SYSTEM = "system"; //$NON-NLS-1$
-	static String ATTRIBUTE_NAME = "name"; //$NON-NLS-1$
-	static String ATTRIBUTE_VALUE = "value"; //$NON-NLS-1$
-	static String ATTRIBUTE_MACRO_FILE = "macro-file"; //$NON-NLS-1$
-	static String VALUE_TRUE = "true"; //$NON-NLS-1$
+	static final String PATH_ENTRY = "pathentry"; //$NON-NLS-1$
+	static final String ATTRIBUTE_KIND = "kind"; //$NON-NLS-1$
+	static final String ATTRIBUTE_PATH = "path"; //$NON-NLS-1$
+	static final String ATTRIBUTE_BASE_PATH = "base-path"; //$NON-NLS-1$
+	static final String ATTRIBUTE_BASE_REF = "base-ref"; //$NON-NLS-1$
+	static final String ATTRIBUTE_EXPORTED = "exported"; //$NON-NLS-1$
+	static final String ATTRIBUTE_SOURCEPATH = "sourcepath"; //$NON-NLS-1$
+	static final String ATTRIBUTE_ROOTPATH = "roopath"; //$NON-NLS-1$
+	static final String ATTRIBUTE_PREFIXMAPPING = "prefixmapping"; //$NON-NLS-1$
+	static final String ATTRIBUTE_EXCLUDING = "excluding"; //$NON-NLS-1$
+	static final String ATTRIBUTE_INCLUDE = "include"; //$NON-NLS-1$
+	static final String ATTRIBUTE_INCLUDE_FILE= "include-file"; //$NON-NLS-1$
+	static final String ATTRIBUTE_LIBRARY = "library"; //$NON-NLS-1$
+	static final String ATTRIBUTE_SYSTEM = "system"; //$NON-NLS-1$
+	static final String ATTRIBUTE_NAME = "name"; //$NON-NLS-1$
+	static final String ATTRIBUTE_VALUE = "value"; //$NON-NLS-1$
+	static final String ATTRIBUTE_MACRO_FILE = "macro-file"; //$NON-NLS-1$
+	static final String VALUE_TRUE = "true"; //$NON-NLS-1$
 
 	static final IPathEntry[] NO_PATHENTRIES = new IPathEntry[0];
 
@@ -148,12 +154,12 @@ public class PathEntryTranslator {
 
 		public ReferenceSettingsInfo(ICConfigurationDescription des) {
 			fExtSettings = des.getExternalSettings();
-			Map<String, String> map = des.getReferenceInfo();
-			fRefProjPaths = new IPath[map.size()];
-			int num = 0;
-			for (String proj : map.keySet()) {
-				fRefProjPaths[num++] = new Path(proj).makeAbsolute();
-			}
+			ICReferenceEntry[] refs = des.getReferenceEntries();
+			Set<IPath> projectPaths = new HashSet<IPath>();
+			for (ICReferenceEntry ref : refs)
+				projectPaths.add(new Path(ref.getProject()).makeAbsolute());
+			fRefProjPaths = new IPath[projectPaths.size()];
+			projectPaths.toArray(fRefProjPaths);
 		}
 
 		public ReferenceSettingsInfo(IPath[] projPaths, ICExternalSetting extSettings[]) {
@@ -172,12 +178,24 @@ public class PathEntryTranslator {
 		public Map<String, String> getRefProjectsMap() {
 			if (fRefProjPaths != null && fRefProjPaths.length != 0) {
 				Map<String, String> map = new HashMap<String, String>(fRefProjPaths.length);
-				for (IPath fRefProjPath : fRefProjPaths) {
-					map.put(fRefProjPath.segment(0), ""); //$NON-NLS-1$
+				for(int i = 0; i < fRefProjPaths.length; i++){
+					map.put(fRefProjPaths[i].segment(0), ""); //$NON-NLS-1$
 				}
 				return map;
 			}
 			return new HashMap<String, String>(0);
+		}
+
+		/** @since 5.3 */
+		public ICReferenceEntry[] getProjectReferences() {
+			if (fRefProjPaths != null && fRefProjPaths.length != 0) {
+				ICReferenceEntry[] refs = new ICReferenceEntry[fRefProjPaths.length];
+				for (int i = 0; i < fRefProjPaths.length; i++) {
+					refs[i] = new CReferenceEntry(fRefProjPaths[i].segment(0), ""); //$NON-NLS-1$
+				}
+				return refs;
+			}
+			return new ICReferenceEntry[0];
 		}
 
 		public ICExternalSetting[] getExternalSettings() {
@@ -244,7 +262,30 @@ public class PathEntryTranslator {
 			return ENTRY_KINDS.clone();
 		}
 
-		public Map<String, IPathEntry> get(int kind) {
+		private int indexToKind(int index){
+			switch (index){
+			case INDEX_CDT_LIBRARY:
+				return IPathEntry.CDT_LIBRARY;
+			case INDEX_CDT_PROJECT:
+				return IPathEntry.CDT_PROJECT;
+			case INDEX_CDT_SOURCE:
+				return IPathEntry.CDT_SOURCE;
+			case INDEX_CDT_INCLUDE:
+				return IPathEntry.CDT_INCLUDE;
+			case INDEX_CDT_CONTAINER:
+				return IPathEntry.CDT_CONTAINER;
+			case INDEX_CDT_MACRO:
+				return IPathEntry.CDT_MACRO;
+			case INDEX_CDT_OUTPUT:
+				return IPathEntry.CDT_OUTPUT;
+			case INDEX_CDT_INCLUDE_FILE:
+				return IPathEntry.CDT_INCLUDE_FILE;
+			case INDEX_CDT_MACRO_FILE:
+				return IPathEntry.CDT_MACRO_FILE;
+			}
+			throw new IllegalArgumentException(UtilMessages.getString("PathEntryTranslator.1")); //$NON-NLS-1$
+		}
+		public Object get(int kind){
 			return fEntryStorage[kindToIndex(kind)];
 		}
 
@@ -384,7 +425,7 @@ public class PathEntryTranslator {
 		return null;
 	}
 
-	private class ResourceInfo {
+	private static class ResourceInfo {
 		IResource fRc;
 		boolean fExists;
 
@@ -1035,7 +1076,7 @@ public class PathEntryTranslator {
 						IPathEntry[] pe = null;
 						if (isBuiltIn(entry) && cs.getPath().segmentCount() > 1) {
 							String name = entry.getName();
-							Map<String, IPathEntry> map = store.get(peKind);
+							Map<String, IPathEntry> map = (Map<String, IPathEntry>)store.get(peKind);
 							if (map == null) {
 								map = new HashMap<String, IPathEntry>();
 								store.put(peKind, map);

@@ -45,6 +45,12 @@ public abstract class ResourceChangeHandlerBase implements IResourceChangeListen
 		boolean handleResourceRemove(IResource rc);
 
 		/**
+		 * Handle a project open
+		 * @since 5.3
+		 */
+		void handleProjectOpen(IProject project);
+
+		/**
 		 * Handle a project close
 		 */
 		void handleProjectClose(IProject project);
@@ -118,9 +124,17 @@ public abstract class ResourceChangeHandlerBase implements IResourceChangeListen
 						resume = checkInitHandleResourceMove(fromRc, dResource);
 					}
 					break;
+				} else if (dResource instanceof IProject &&
+						((flags & IResourceDelta.OPEN) != 0 || 
+					     (flags & IResourceDelta.DESCRIPTION) != 0)) {
+					fHandler.handleProjectOpen((IProject) dResource);
 				} else if (removed) {
 					resume = fHandler.handleResourceRemove(dResource);
 				}
+				break;
+			case IResourceDelta.ADDED:
+				if (dResource instanceof IProject)
+					fHandler.handleProjectOpen((IProject) dResource);
 				break;
 			default:
 				break;

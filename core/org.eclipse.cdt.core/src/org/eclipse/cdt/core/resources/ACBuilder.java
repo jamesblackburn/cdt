@@ -227,8 +227,7 @@ public abstract class ACBuilder extends IncrementalProjectBuilder implements IMa
 	* @since 5.2
 	*/
 	@Override
-	@SuppressWarnings("rawtypes")
-	public ISchedulingRule getRule(int trigger, Map args) {
+	public ISchedulingRule getRule(int trigger, Map<String, String> args) {
 		return null;
 	}
 

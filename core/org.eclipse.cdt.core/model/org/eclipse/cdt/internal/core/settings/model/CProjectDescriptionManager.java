@@ -11,6 +11,7 @@
  * IBM Corporation
  * James Blackburn (Broadcom Corp.)
  * Alex Blewitt Bug 132511 - nature order not preserved
+ * Alex Collins (Broadcom Corporation)
  *******************************************************************************/
 package org.eclipse.cdt.internal.core.settings.model;
 
@@ -35,6 +36,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArraySet;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -67,6 +69,7 @@ import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionListener;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionManager;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionWorkspacePreferences;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICSettingBase;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
@@ -91,11 +94,13 @@ import org.eclipse.cdt.core.settings.model.util.PathSettingsContainer;
 import org.eclipse.cdt.core.settings.model.util.PatternNameMap;
 import org.eclipse.cdt.internal.core.CConfigBasedDescriptorManager;
 import org.eclipse.cdt.internal.core.model.CElementDelta;
+import org.eclipse.cdt.internal.core.resources.BuildConfigReconciler;
 import org.eclipse.cdt.internal.core.settings.model.CExternalSettinsDeltaCalculator.ExtSettingsDelta;
 import org.eclipse.cdt.internal.core.settings.model.xml.InternalXmlStorageElement;
 import org.eclipse.cdt.internal.core.settings.model.xml.XmlStorage;
 import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
+import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
@@ -105,6 +110,7 @@ import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.resources.WorkspaceJob;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IExtension;
 import org.eclipse.core.runtime.IExtensionPoint;
@@ -172,6 +178,8 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 	private static final String DEFAULT_CFG_NAME = "Configuration"; //$NON-NLS-1$
 
 	private static final QualifiedName SCANNER_INFO_PROVIDER_PROPERTY = new QualifiedName(CCorePlugin.PLUGIN_ID, "scannerInfoProvider"); //$NON-NLS-1$
+
+	private static final ICReferenceEntry[] EMPTY_REFERENCE_ENTRY_ARRAY = new ICReferenceEntry[0];
 
 	static class CompositeWorkspaceRunnable implements IWorkspaceRunnable {
 		private List<IWorkspaceRunnable> fRunnables = new ArrayList<IWorkspaceRunnable>();
@@ -276,6 +284,13 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 		return fInstance;
 	}
 
+	/**
+	 * Notify the build configuration reconciler that the project has opened
+	 */
+	public void projectOpened(IProject project) {
+		BuildConfigReconciler.getInstance().projectOpened(project);
+	}
+
 	public void projectClosedRemove(IProject project) {
 		CProjectDescriptionStorageManager.getInstance().projectClosedRemove(project);
 	}
@@ -332,6 +347,9 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 			protected IStatus run(IProgressMonitor monitor) {
 				try{
 					startSaveParticipant();
+					IProject[] projects = ResourcesPlugin.getWorkspace().getRoot().getProjects();
+					for (IProject project : projects)
+						CProjectDescriptionManager.this.projectOpened(project);
 				} catch (CoreException e){
 					CCorePlugin.log(e);
 					return e.getStatus();
@@ -627,7 +645,7 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 	/*
 	 * returns true if the project description was modified false - otherwise
 	 */
-	public boolean checkHandleActiveCfgChange(CProjectDescription newDes, ICProjectDescription oldDes, IProjectDescription eDes, IProgressMonitor monitor){
+	public boolean checkHandleActiveCfgChange(CProjectDescription newDes, ICProjectDescription oldDes, SettingsContext eDes, IProgressMonitor monitor){
 		if(newDes == null)
 			return false;
 		ICConfigurationDescription newCfg = newDes.getActiveConfiguration();
@@ -681,51 +699,21 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 	}
 
 	/**
-	 * Fix up platform references having changed CDT configuration references
+	 * Synchronize CDT configuration references with platform project variant references.
+	 * @param des Old project description for the project being synchronized
+	 * @param newCDesc New project description for the project being synchronized
+	 * @param newCfg The new CDT configuration description
+	 * @param oldCfg Old CDT configuration description
+	 * @param monitor
+	 * @return true if the references changed between the two configuration descriptions
+	 * @throws CoreException
 	 */
-	@SuppressWarnings("unchecked")
-	private boolean checkProjectRefChange(IProjectDescription des, ICProjectDescription newCDesc, ICConfigurationDescription newCfg, ICConfigurationDescription oldCfg, IProgressMonitor monitor) throws CoreException{
+	private boolean checkProjectRefChange(SettingsContext context, ICProjectDescription newCDesc, ICConfigurationDescription newCfg, ICConfigurationDescription oldCfg, IProgressMonitor monitor) throws CoreException {
 		if(newCfg == null)
 			return false;
 
-		Map<String, String> oldMap = oldCfg != null ? oldCfg.getReferenceInfo() : Collections.EMPTY_MAP;
-		Map<String, String> newMap = newCfg.getReferenceInfo();
-
-		// If there's been no change nothing to do
-		if (newMap.equals(oldMap))
-			return false;
-
-		// We're still looking at the same configuration - any refs removed?
-		HashSet<String> removedRefs = new HashSet<String>();
-		if (oldCfg != null && oldCfg.getId().equals(newCfg.getId())) {
-			removedRefs.addAll(oldMap.keySet());
-			removedRefs.removeAll(newMap.keySet());
+		return BuildConfigReconciler.getInstance().updatePlatformConfigurations(context.getProject(), context.getEclipseProjectDescription());
 		}
-
-		// Get the full set of references from all configuration
-		LinkedHashSet<String> allRefs = new LinkedHashSet<String>();
-		for (ICConfigurationDescription cfg : newCDesc.getConfigurations())
-			allRefs.addAll(cfg.getReferenceInfo().keySet());
-
-		// Don't remove a reference if it's referenced by any configuration in the project description
-		removedRefs.removeAll(allRefs);
-
-		Collection<IProject> oldProjects = new LinkedHashSet<IProject>(Arrays.asList(des.getReferencedProjects()));
-		Collection<IProject> newProjects = projSetFromProjNameSet(allRefs);
-
-		// If there are no changes, just return
-		if (removedRefs.isEmpty() && oldProjects.containsAll(newProjects))
-			return false;
-
-		// Ensure the Eclipse configuration references all projects we reference
-		oldProjects.addAll(newProjects);
-		// Removing any projects we no longer referece
-		oldProjects.removeAll(projSetFromProjNameSet(removedRefs));
-
-		des.setReferencedProjects(oldProjects.toArray(new IProject[oldProjects.size()]));
-		return true;
-	}
-
 
 //	private void checkBuildSystemChange(IProject project, String newBsId, String oldBsId, IProgressMonitor monitor) throws CoreException{
 //		checkBuildSystemChange(project, null, newBsId, oldBsId, monitor);
@@ -757,10 +745,12 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 		return des.checkPersistSettingCfg(oldId, false);
 	}
 
-	private boolean checkBuildSystemChange(IProjectDescription des,
+	private boolean checkBuildSystemChange(SettingsContext context,
 			ICConfigurationDescription newCfg,
 			ICConfigurationDescription oldCfg,
 			IProgressMonitor monitor) throws CoreException{
+		IProjectDescription des = context.getEclipseProjectDescription();
+		
 		String newBsId = newCfg != null ? newCfg.getBuildSystemId() : null;
 		String oldBsId = oldCfg != null ? oldCfg.getBuildSystemId() : null;
 
@@ -791,6 +781,7 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 		final String[] newNatureIds = cur.toArray(new String[cur.size()]);
 		if (!Arrays.equals(newNatureIds, natureIds)) {
 			des.setNatureIds(newNatureIds);
+			context.setEclipseProjectDescription(des);
 			return true;
 		}
 
@@ -1580,37 +1571,37 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 			delta.addChangeFlags(cfgRefFlags);
 	}
 
+	/**
+	 * Determine if the configuration references have changed between the given descriptions, and if so how.
+	 * @param newDes the old description
+	 * @param oldDes the new description
+	 * @return A bit mask indicating what changed:
+	 * <ul>
+	 * <li>{@link ICDescriptionDelta#CFG_REF_REMOVED} indicates that a reference was removed</li>
+	 * <li>{@link ICDescriptionDelta#CFG_REF_ADDED} indicates that a reference was added</li>
+	 * </ul>
+	 */
 	private int calcRefChangeFlags(ICConfigurationDescription newDes, ICConfigurationDescription oldDes){
-		Map<String, String> newMap = newDes != null ? newDes.getReferenceInfo() : null;
-		Map<String, String> oldMap = oldDes != null ? oldDes.getReferenceInfo() : null;
+		HashSet<ICReferenceEntry> newRefs = new HashSet<ICReferenceEntry>(Arrays.asList(newDes != null ? newDes.getReferenceEntries() : EMPTY_REFERENCE_ENTRY_ARRAY));
+		HashSet<ICReferenceEntry> oldRefs = new HashSet<ICReferenceEntry>(Arrays.asList(oldDes != null ? oldDes.getReferenceEntries() : EMPTY_REFERENCE_ENTRY_ARRAY));
 
 		int flags = 0;
-		if(newMap == null || newMap.size() == 0){
-			if(oldMap != null && oldMap.size() != 0){
+		if (newRefs.isEmpty() && !oldRefs.isEmpty()) {
 				flags = ICDescriptionDelta.CFG_REF_REMOVED;
-			}
-		} else {
-			if(oldMap == null || oldMap.size() == 0){
+		} else if (oldRefs.isEmpty() && !newRefs.isEmpty()) {
 				flags = ICDescriptionDelta.CFG_REF_ADDED;
 			} else {
-				boolean stop = false;
-				for (Map.Entry<String, String> newEntry : newMap.entrySet()) {
-					String newProj = newEntry.getKey();
-					String newCfg = newEntry.getValue();
-					String oldCfg = oldMap.remove(newProj);
-					if(!newCfg.equals(oldCfg)){
+			for (ICReferenceEntry newEntry : newRefs) {
+				if (!oldRefs.contains(newEntry)) {
 						flags |= ICDescriptionDelta.CFG_REF_ADDED;
-						if(oldCfg != null){
-							flags |= ICDescriptionDelta.CFG_REF_REMOVED;
-							stop = true;
-						}
-						if(stop)
 							break;
 					}
 				}
-
-				if(!oldMap.isEmpty())
+			for (ICReferenceEntry oldEntry : oldRefs) {
+				if (!newRefs.contains(oldEntry)) {
 					flags |= ICDescriptionDelta.CFG_REF_REMOVED;
+					break;
+				}
 			}
 		}
 

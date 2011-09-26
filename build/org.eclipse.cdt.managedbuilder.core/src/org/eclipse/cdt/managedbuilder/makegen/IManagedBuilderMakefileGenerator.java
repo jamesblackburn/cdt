@@ -75,10 +75,10 @@ public interface IManagedBuilderMakefileGenerator {
 	public MultiStatus generateMakefiles(IResourceDelta delta)  throws CoreException ;
 	
 	/**
-	 * Answers the path of the top directory generated for the build
-	 * output, or <code>null</code> if none has been generated.
+	 * Answers the project-relative path of the top directory generated for the build
+	 * output/
 	 * 
-	 * @return <code>IPath</code> to the working directory of the build
+	 * @return project relative <code>IPath</code> to the working directory of the build
 	 */
 	public IPath getBuildWorkingDir();
 

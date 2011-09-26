@@ -60,7 +60,6 @@ import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IWorkspaceRunnable;
 import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
@@ -394,14 +393,7 @@ public class ProjectConverter implements ICProjectConverter {
 							}
 						}
 
-						IPath projPaths[] = refInfo.getReferencedProjectsPaths();
-						if(projPaths.length != 0){
-							Map<String, String> map = new HashMap<String, String>(projPaths.length);
-							for(int i = 0; i < projPaths.length; i++){
-								map.put(projPaths[i].segment(0), "");	//$NON-NLS-1$
-							}
-							des.setReferenceInfo(map);
-						}
+						des.setReferenceEntries(refInfo.getProjectReferences());
 					}
 				}
 				des.removeStorage(OLD_PATH_ENTRY_ID);

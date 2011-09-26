@@ -97,6 +97,14 @@ public interface IManagedProject extends IBuildObject, IBuildObjectPropertiesCon
 	public IConfiguration getConfiguration(String id);
 
 	/**
+	 * Returns the configuration with the given id, or <code>null</code> if not found.
+	 * 
+	 * @param name The unique name of the configuration
+	 * @return IConfiguration
+	 */
+	public IConfiguration getConfigurationByName(String name);
+
+	/**
 	 * Answers the <code>IProjectType</code> that is the superclass of this
 	 * project-type, or <code>null</code> if the attribute was not specified.
 	 * 

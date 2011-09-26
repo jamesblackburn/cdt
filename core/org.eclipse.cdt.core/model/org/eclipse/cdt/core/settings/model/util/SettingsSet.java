@@ -22,12 +22,19 @@ import org.eclipse.cdt.core.settings.model.ICLanguageSettingEntry;
 import org.eclipse.cdt.core.settings.model.ICMacroEntry;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
 
+/**
+ * SettingsSet used by AbstractEntryStorage to store
+ * multi-level {@link ICLanguageSettingEntry}.  Each SettingLevel
+ * may be read-only.  SettingLevels contain EntryInfo which 
+ * hold the ICLanguageSettingEntry in question, as well as 
+ * an EntryNameKey and overridden state.
+ */
 public class SettingsSet {
 	public static final int READ_ONLY = 1;
 	public static final int WRITABLE = 1 << 1;
 
 	private SettingLevel[] fLevels;
-	public class SettingLevel {
+	public static class SettingLevel {
 		private int fFlagsToSet;
 		private int fFlagsToClear;
 		private boolean fIsReadOnly;
@@ -201,8 +208,8 @@ public class SettingsSet {
 			return fNameKey;
 		}
 		
-		private void makeOverridden(boolean overrridden){
-			fIsOverRidden = overrridden;
+		private void makeOverridden(boolean overridden){
+			fIsOverRidden = overridden;
 		}
 
 		public ICLanguageSettingEntry getEntry(){
@@ -375,7 +382,7 @@ public class SettingsSet {
 		for(EntryInfo info : level.getInfos()){
 			EntryNameKey key = info.getContentsKey(); 
 			if(!map.containsKey(key))
-				map.put(key, new Object[]{new Integer(l), info.getEntry()});
+				map.put(key, new Object[]{Integer.valueOf(l), info.getEntry()});
 		}
 	}
 	

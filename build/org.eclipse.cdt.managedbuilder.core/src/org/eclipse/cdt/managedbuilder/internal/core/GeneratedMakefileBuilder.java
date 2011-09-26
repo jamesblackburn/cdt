@@ -395,9 +395,7 @@ public class GeneratedMakefileBuilder extends ACBuilder {
 	 * @see org.eclipse.core.internal.events.InternalBuilder#build(int, java.util.Map, org.eclipse.core.runtime.IProgressMonitor)
 	 */
 	@Override
-	protected IProject[] build(int kind, @SuppressWarnings("rawtypes") Map argsMap, IProgressMonitor monitor) throws CoreException {
-		@SuppressWarnings("unchecked")
-		Map<String, String> args = argsMap;
+	protected IProject[] build(int kind, Map<String, String> args, IProgressMonitor monitor) throws CoreException {
 		if (DEBUG_EVENTS)
 			printEvent(kind, args);
 
@@ -415,14 +413,15 @@ public class GeneratedMakefileBuilder extends ACBuilder {
 			return referencedProjects;
 		}
 
-		IConfiguration[] cfgs = null;
-		if (needAllConfigBuild()) {
-			cfgs = info.getManagedProject().getConfigurations();
-		} else {
-			cfgs = new IConfiguration[] {info.getDefaultConfiguration() };
+		IConfiguration[] cfgs = info.getManagedProject().getConfigurations();
+		IConfiguration cfg = null;
+		for (int i = 0; i < cfgs.length; i++) {
+			if (getBuildConfig().getName().equals(cfgs[i].getName())) {
+				cfg = cfgs[i];
+			}
 		}
 		
-		for (IConfiguration cfg : cfgs) {
+		//for (IConfiguration cfg : cfgs) {
 			updateOtherConfigs(cfg, kind);
 
 			if(((Configuration)cfg).isInternalBuilderEnabled()){
@@ -494,7 +493,7 @@ public class GeneratedMakefileBuilder extends ACBuilder {
 					incrementalBuild(delta, info, generator, monitor);
 				}
 			}
-		}
+		//}
 		/*
 		// So let's figure out why we got called
 		if (kind == FULL_BUILD) {

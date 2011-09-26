@@ -114,14 +114,7 @@ public class SetCProjectDescriptionOperation extends CModelOperation {
 		if(fSetDescription != null)
 			fSetDescription.switchToCachedAppliedData(fNewDescriptionCache);
 
-		try {
-			final IProjectDescription eDes = context.getEclipseProjectDescription();
-			if(mngr.checkHandleActiveCfgChange(fNewDescriptionCache, fOldDescriptionCache, eDes, new NullProgressMonitor())){
-				context.setEclipseProjectDescription(eDes);
-			}
-		} catch (CoreException e2) {
-			CCorePlugin.log(e2);
-		}
+		mngr.checkHandleActiveCfgChange(fNewDescriptionCache, fOldDescriptionCache, context, new NullProgressMonitor());
 
 		// fNewDescriptionCache is still writable and may be written to at this point
 		AbstractCProjectDescriptionStorage.fireDataAppliedEvent(fNewDescriptionCache, fOldDescriptionCache, fSetDescription, delta);

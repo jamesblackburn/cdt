@@ -7,6 +7,7 @@
  *
  * Contributors:
  * Intel Corporation - Initial API and implementation
+ * Alex Collins (Broadcom Corporation) - Multiple references per project aren't supported (bug 317229)
  *******************************************************************************/
 
 package org.eclipse.cdt.internal.core.settings.model;
@@ -27,6 +28,7 @@ import org.eclipse.cdt.core.settings.model.ICFolderDescription;
 import org.eclipse.cdt.core.settings.model.ICLanguageSetting;
 import org.eclipse.cdt.core.settings.model.ICMultiConfigDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICSettingContainer;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
@@ -238,6 +240,8 @@ public class MultiConfigDescription extends MultiItemsHolder implements
 	/* (non-Javadoc)
 	 * @see org.eclipse.cdt.core.settings.model.ICConfigurationDescription#getReferenceInfo()
 	 */
+	/** @deprecated Use {@link #getReferenceEntries()} instead. */
+	@Deprecated
 	public Map<String, String> getReferenceInfo() {
 		if (DEBUG)
 			System.out.println("Bad multi access: MultiConfigDescription.getReferenceInfo()"); //$NON-NLS-1$
@@ -316,6 +320,13 @@ public class MultiConfigDescription extends MultiItemsHolder implements
 	 */
 	public ICSourceEntry[] getSourceEntries() {
 		return new ICSourceEntry[0];
+	}
+
+	/* (non-Javadoc)
+	 * @see org.eclipse.cdt.core.settings.model.ICConfigurationDescription#getReferenceEntries()
+	 */
+	public ICReferenceEntry[] getReferenceEntries() {
+		throw new UnsupportedOperationException();
 	}
 
 	/* (non-Javadoc)
@@ -442,6 +453,8 @@ public class MultiConfigDescription extends MultiItemsHolder implements
 	/* (non-Javadoc)
 	 * @see org.eclipse.cdt.core.settings.model.ICConfigurationDescription#setReferenceInfo(java.util.Map)
 	 */
+	/** @deprecated Use {@link #setReferenceEntries(ICReferenceEntry[])} instead. */
+	@Deprecated
 	public void setReferenceInfo(Map<String, String> refs) throws WriteAccessException {
 		for (int i=0; i<fCfgs.length; i++)
 			fCfgs[i].setReferenceInfo(refs);
@@ -462,6 +475,14 @@ public class MultiConfigDescription extends MultiItemsHolder implements
 			WriteAccessException {
 		for (int i=0; i<fCfgs.length; i++)
 			fCfgs[i].setSourceEntries(entries);
+	}
+
+	/* (non-Javadoc)
+	 * @see org.eclipse.cdt.core.settings.model.ICConfigurationDescription#setReferenceEntries(org.eclipse.cdt.core.settings.model.ICReferenceEntry[])
+	 */
+	public void setReferenceEntries(ICReferenceEntry[] entries) throws CoreException, WriteAccessException
+	{
+		throw new UnsupportedOperationException();
 	}
 
 	/* (non-Javadoc)

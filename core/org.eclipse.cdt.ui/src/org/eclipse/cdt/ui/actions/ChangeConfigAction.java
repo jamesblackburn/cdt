@@ -11,9 +11,11 @@
 package org.eclipse.cdt.ui.actions;
 
 import java.util.HashSet;
-import java.util.Iterator;
 
+import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IWorkspace;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.jface.action.Action;
 
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
@@ -27,44 +29,43 @@ import org.eclipse.cdt.ui.newui.CDTPropertyManager;
  */
 public class ChangeConfigAction extends Action {
 
-	private String fConfigName = null;
-	protected HashSet<IProject> fProjects = null;
-	
+	/** Collection of platform build configurations modified by this build action */
+	final IBuildConfiguration[] buildConfigs;
+
 	/**
 	 * Constructs the action.
-	 * @param projects List of selected managed-built projects 
+	 * @param projects List of selected managed-built projects
 	 * @param configName Build configuration name
 	 * @param accel Number to be used as accelerator
 	 */
 	public ChangeConfigAction(HashSet<IProject> projects, String configName, String displayName, int accel) {
 		super("&" + accel + " " + displayName); //$NON-NLS-1$ //$NON-NLS-2$
-		fProjects = projects;
-		fConfigName = configName;
+
+		// This action assumes the same configuration exists in each project.
+		IWorkspace ws = ResourcesPlugin.getWorkspace();
+		buildConfigs = new IBuildConfiguration[projects.size()];
+		int i = 0;
+		for (IProject p : projects)
+			buildConfigs[i++] = ws.newBuildConfig(p.getName(), configName);
 	}
-	
+
 	/**
+	 * Run the action (changing the active build configuration)
 	 * @see org.eclipse.jface.action.IAction#run()
 	 */
 	@Override
 	public void run() {
-		Iterator<IProject> iter = fProjects.iterator();
-		while (iter.hasNext()) {
-			IProject prj = iter.next();
-			ICProjectDescription prjd = CDTPropertyManager.getProjectDescription(prj);
+		for (IBuildConfiguration config : buildConfigs) {
+			ICProjectDescription prjd = CDTPropertyManager.getProjectDescription(config.getProject());
 			boolean changed = false;
-			ICConfigurationDescription[] configs = prjd.getConfigurations(); 
-			if (configs != null && configs.length > 0) {
-				for (ICConfigurationDescription config : configs) {
-					if (config.getName().equals(fConfigName)) {
-						config.setActive();
-						CDTPropertyManager.performOk(null);
-						AbstractPage.updateViews(prj);
-						changed = true;
-						break;
-					}
-				}
+			ICConfigurationDescription cConfig = prjd.getConfigurationByName(config.getName());
+			if (cConfig != null) {
+				cConfig.setActive();
+				CDTPropertyManager.performOk(null);
+				AbstractPage.updateViews(config.getProject());
+				changed = true;
 			}
-			
+
 			if(!changed)
 				CDTPropertyManager.performCancel(null);
 		}

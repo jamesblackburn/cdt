@@ -12,8 +12,11 @@
 package org.eclipse.cdt.internal.core.settings.model;
 
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -25,6 +28,7 @@ import org.eclipse.cdt.core.settings.model.ICBuildSetting;
 import org.eclipse.cdt.core.settings.model.ICConfigExtensionReference;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICExternalSetting;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
 import org.eclipse.cdt.core.settings.model.ICSettingsStorage;
 import org.eclipse.cdt.core.settings.model.ICStorageElement;
@@ -76,7 +80,7 @@ public class CConfigurationSpecSettings implements ICSettingsStorage{
 	private StorableCdtVariables fMacros;
 	private StorableEnvironment fEnvironment;
 //	private HashMap fRefInfoMap;
-	private Map<String, String> fRefMapCache;
+	private Collection<ICReferenceEntry> fReferencesCache;
 	private CExternalSettingsHolder fExtSettingsProvider = new CExternalSettingsHolder();
 	private boolean fIsModified;
 	private HashMap<QualifiedName, Object> fSessionPropertiesMap;
@@ -411,12 +415,12 @@ public class CConfigurationSpecSettings implements ICSettingsStorage{
 		fEnvironment = environment;
 	}
 
-	public Map<String, String> getReferenceInfo(){
+	public Collection<ICReferenceEntry> getReferenceInfo(){
 		if(!fCfg.isReadOnly())
-			return CfgExportSettingContainerFactory.getReferenceMap(fCfg);
-		if(fRefMapCache == null)
-			fRefMapCache = CfgExportSettingContainerFactory.getReferenceMap(fCfg);
-		return new LinkedHashMap<String, String>(fRefMapCache);
+			return CfgExportSettingContainerFactory.getReferences(fCfg);
+		if(fReferencesCache == null)
+			fReferencesCache = Collections.unmodifiableCollection(CfgExportSettingContainerFactory.getReferences(fCfg));
+		return fReferencesCache;
 //		if(fRefInfoMap == null || fRefInfoMap.size() == 0)
 //			return new HashMap(0);
 //
@@ -429,24 +433,9 @@ public class CConfigurationSpecSettings implements ICSettingsStorage{
 //		return map;
 	}
 
-//	public Map getProjectRefInfoMap(){
-//		if(fRefInfoMap == null || fRefInfoMap.size() == 0)
-//			return new HashMap(0);
-//
-//		return (Map)fRefInfoMap.clone();
-//	}
-
-//	public void setProjectRefInfoMap(Map map){
-//		if(map == null && map.size() == 0)
-//			fRefInfoMap = null;
-//
-//		fRefInfoMap = new HashMap(map);
-//		fIsModified = true;
-//	}
-
-	public void setReferenceInfo(Map<String, String> ref){
-		fRefMapCache = null;
-		CfgExportSettingContainerFactory.setReferenceMap(fCfg, ref);
+	public void setReferenceInfo(ICReferenceEntry[] refs){
+		fReferencesCache = null;
+		CfgExportSettingContainerFactory.setReferences(fCfg, refs);
 //		if(isReadOnly())
 //			throw ExceptionFactory.createIsReadOnlyException();
 //

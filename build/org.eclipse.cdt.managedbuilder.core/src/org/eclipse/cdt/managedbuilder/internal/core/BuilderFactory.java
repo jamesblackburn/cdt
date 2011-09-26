@@ -168,23 +168,39 @@ public class BuilderFactory {
 		return map;
 	}
 	
-	private static String[] cfgIdsFromMap(Map<String, String> map){
+	/**
+	 * Return a String[] of ids referenced by the map.
+	 * If none found, returns the default build configuration id, or if that fails,
+	 * empty list.
+	 * @param map build arguments map
+	 * @param info
+	 * @return String[] of configIds in the map, or empty array if none discovered
+	 */
+	private static String[] cfgIdsFromMap(Map<String, String> map, IManagedBuildInfo info){
+		String[] configs = null;
 		String idsString = map.get(CONFIGURATION_IDS);
 		if(idsString != null){
 			List<String> list = MapStorageElement.decodeList(idsString);
-			return list.toArray(new String[list.size()]);
+			configs = list.toArray(new String[list.size()]);
+			if (configs.length > 0)
+				return configs;
 		}
+		// Try getting the default configuration
+		if (info.getDefaultConfiguration() != null)
+			return new String[] {info.getDefaultConfiguration().getId()};
 		return EMPTY_STRING_ARRAY;
 	}
 	
+	/**
+	 * Returns the IConfiguration[]s referenced in the build args map.
+	 * If none found, returns the default build configuration, or if that fails,
+	 * the empty list.
+	 * @param map
+	 * @param info
+	 * @return IConfiguration[]
+	 */
 	private static IConfiguration[] configsFromMap(Map<String, String> map, IManagedBuildInfo info){
-		String ids[] = cfgIdsFromMap(map);
-		if(ids.length == 0){
-			IConfiguration cfg = info.getDefaultConfiguration();
-			if(cfg != null)
-				return new IConfiguration[]{cfg};
-			return EMPTY_CFG_ARAY;
-		}
+		String ids[] = cfgIdsFromMap(map, info);
 		IManagedProject mProj = info.getManagedProject();
 		if(mProj != null)
 			return idsToConfigurations(ids, mProj.getConfigurations());
@@ -342,18 +358,46 @@ public class BuilderFactory {
 		return builder;
 	}
 
+	/**
+	 * Discover the configuration IDs which should be built from the build args
+	 * supplied to the IncrementalProjectBuilder#build.
+	 * 
+	 * These arguments should have been set by <code>createBuildArgs(...)</code>
+	 *
+	 * @param project top-level project being built
+	 * @param args incremental builder project args
+	 * @return String[] of referenced configuration ids
+	 */
+	public static String[] getConfigIdsFromArgs(IProject project, Map<String, String> args) {
+		IManagedBuildInfo info = ManagedBuildManager.getBuildInfo(project);
+		String type = args == null ? null : args.get(CONTENTS);
+		if(info != null) {
+			// If we can extract configurations from the build info map, return them
+			if (CONTENTS_BUILDER.equals(type) ||
+					CONTENTS_CONFIGURATION_IDS.equals(type))
+				return cfgIdsFromMap(args, info);
+			// Return the default build configuration
+			return new String[] { info.getDefaultConfiguration().getId() };
+		}
+		return EMPTY_STRING_ARRAY;
+	}
+
 	public static IBuilder[] createBuilders(IProject project, Map<String, String> args){
+		IManagedBuildInfo info = ManagedBuildManager.getBuildInfo(project);
+		IConfiguration defaultCfg = info.getDefaultConfiguration();
+		return createBuilders(project, defaultCfg, args);
+	}
+
+	public static IBuilder[] createBuilders(IProject project, IConfiguration cfg, Map<String, String> args) {
 		IManagedBuildInfo info = ManagedBuildManager.getBuildInfo(project);
 		IBuilder[] builders = null;
 		if(info != null){
 			if(args == null){
-				IConfiguration cfg = info.getDefaultConfiguration();
 				IBuilder builder = cfg.getEditableBuilder();
 				builders = new IBuilder[]{builder};
 			} else {
 				String type = args.get(CONTENTS);
 				if(type == null || CONTENTS_BUILDER_CUSTOMIZATION.equals(type)){
-					IConfiguration cfg = info.getDefaultConfiguration();
 					IBuilder builder;
 					if(args.size() == 0){
 						builder = cfg.getEditableBuilder();
@@ -362,8 +406,6 @@ public class BuilderFactory {
 					}
 					builders = new IBuilder[]{builder};
 				} else if (CONTENTS_ACTIVE_CFG_SETTINGS.equals(type)) {
-					IConfiguration cfg = info.getDefaultConfiguration();
-					
 					IBuilder builder = cfg.getEditableBuilder();
 					
 					builders = new IBuilder[]{builder};

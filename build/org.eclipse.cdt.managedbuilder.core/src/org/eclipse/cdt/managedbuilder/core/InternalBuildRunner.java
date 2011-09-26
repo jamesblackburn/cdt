@@ -17,7 +17,6 @@ import java.io.OutputStream;
 import org.eclipse.cdt.core.ConsoleOutputStream;
 import org.eclipse.cdt.core.ErrorParserManager;
 import org.eclipse.cdt.core.IMarkerGenerator;
-import org.eclipse.cdt.core.model.ICModelMarker;
 import org.eclipse.cdt.core.resources.IConsole;
 import org.eclipse.cdt.managedbuilder.buildmodel.BuildDescriptionManager;
 import org.eclipse.cdt.managedbuilder.buildmodel.IBuildDescription;
@@ -28,11 +27,8 @@ import org.eclipse.cdt.managedbuilder.internal.buildmodel.IConfigurationBuildSta
 import org.eclipse.cdt.managedbuilder.internal.buildmodel.IProjectBuildState;
 import org.eclipse.cdt.managedbuilder.internal.buildmodel.ParallelBuilder;
 import org.eclipse.cdt.managedbuilder.internal.core.ManagedMakeMessages;
-import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceDelta;
-import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -129,11 +125,6 @@ public class InternalBuildRunner extends AbstractBuildRunner {
 				dBuilder = new DescriptionBuilder(des, buildIncrementaly, resumeOnErr, cBS);
 
 			if(isParallel || dBuilder.getNumCommands() > 0) {
-				// Remove all markers for this project
-				IWorkspace workspace = project.getWorkspace();
-				IMarker[] markers = project.findMarkers(ICModelMarker.C_MODEL_PROBLEM_MARKER, true, IResource.DEPTH_INFINITE);
-				if (markers != null)
-					workspace.deleteMarkers(markers);
 
 				// Hook up an error parser manager
 				String[] errorParsers = builder.getErrorParsers();
