@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.4"?>
+<plugin>
+   <extension
+         point="org.eclipse.ui.popupMenus">
+      <objectContribution
+            adaptable="true"
+            id="com.broadcom.eclipse.cdt.exportSettings"
+            objectClass="org.eclipse.core.resources.IProject">
+         <action
+               class="org.eclipse.cdt.buildconfig.txt.CDTBuildSettingsExporter"
+               enablesFor="1"
+               id="com.broadcom.eclipse.cdt.exportSettingsAction"
+               label="Export Configurations As Text ..."
+               menubarPath="org.eclipse.cdt.ui.cfgmenu/additions">
+         </action>
+         <visibility>
+               <objectState
+                     name="projectNature"
+                     value="org.eclipse.cdt.managedbuilder.core.managedBuildNature">
+               </objectState>
+         </visibility>
+      </objectContribution>
+   </extension>
+</plugin>
