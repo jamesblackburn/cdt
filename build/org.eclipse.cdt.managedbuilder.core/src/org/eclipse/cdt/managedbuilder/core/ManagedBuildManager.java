@@ -57,6 +57,7 @@ import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICMultiConfigDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionManager;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
 import org.eclipse.cdt.core.settings.model.XmlStorageUtil;
 import org.eclipse.cdt.core.settings.model.extension.CConfigurationData;
@@ -104,6 +105,7 @@ import org.eclipse.cdt.managedbuilder.makegen.IManagedBuilderMakefileGenerator;
 import org.eclipse.cdt.managedbuilder.makegen.gnu.GnuMakefileGenerator;
 import org.eclipse.cdt.managedbuilder.projectconverter.UpdateManagedProjectManager;
 import org.eclipse.cdt.managedbuilder.tcmodification.IToolChainModificationManager;
+import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IContainer;
 import org.eclipse.core.resources.IFile;
@@ -4479,7 +4481,16 @@ public class ManagedBuildManager extends AbstractCExtension {
 	 * @param monitor - progress monitor
 	 */
 	public static void buildConfigurations(IConfiguration[] configs, IProgressMonitor monitor) throws CoreException{
-		buildConfigurations(configs, null, monitor);
+		IBuildConfiguration[] platformConfigs = new IBuildConfiguration[configs.length];
+		for (int i = 0; i < configs.length; i++)
+			try {
+				platformConfigs[i] = ((IProject)configs[i].getManagedProject().getOwner()).getBuildConfig(configs[i].getName());
+			} catch (CoreException e) {
+				IStatus result = new Status(e.getStatus().getSeverity(), ManagedBuilderCorePlugin.getUniqueIdentifier(), 
+						"Couldn't get the Project Configuration for cdt Configuration: " + configs[i].getName(), e);
+				ManagedBuilderCorePlugin.log(result);
+			}
+		ResourcesPlugin.getWorkspace().build(platformConfigs, IncrementalProjectBuilder.INCREMENTAL_BUILD, true, monitor);
 	}
 
 	/**

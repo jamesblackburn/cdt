@@ -274,6 +274,9 @@ public class ManagedBuilderCorePlugin extends Plugin {
 		return BuilderFactory.createBuilders(project, args);
 	}
 	
+	/**
+	 * @since 8.0
+	 */
 	public static IBuilder[] createBuilders(IProject project, IConfiguration cfg, Map<String, String> args){
 		return BuilderFactory.createBuilders(project, cfg, args);
 	}
