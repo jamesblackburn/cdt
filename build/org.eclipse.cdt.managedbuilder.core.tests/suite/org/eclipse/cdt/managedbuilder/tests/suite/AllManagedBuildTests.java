@@ -38,6 +38,7 @@ import org.eclipse.cdt.managedbuilder.core.tests.OptionCategoryEnablementTests;
 import org.eclipse.cdt.managedbuilder.core.tests.OptionEnablementTests;
 import org.eclipse.cdt.managedbuilder.core.tests.PathConverterTest;
 import org.eclipse.cdt.managedbuilder.core.tests.ResourceBuildCoreTests;
+import org.eclipse.cdt.managedbuilder.internal.core.tests.AllBuilderTests;
 import org.eclipse.cdt.managedbuilder.templateengine.tests.AllTemplateEngineTests;
 import org.eclipse.cdt.projectmodel.tests.BackwardCompatiblityTests;
 import org.eclipse.cdt.projectmodel.tests.CProjectDescriptionSerializationTests;
@@ -79,6 +80,9 @@ public class AllManagedBuildTests {
 		suite.addTest(ManagedBuildDependencyCalculatorTests.suite());
 		suite.addTest(BuildDescriptionModelTests.suite());
 		suite.addTest(PathConverterTest.suite());
+
+		// Managed Build builder tests
+		suite.addTest(AllBuilderTests.suite());
 
 		// managedbuilder.templateengine.tests
 		suite.addTest(AllTemplateEngineTests.suite());

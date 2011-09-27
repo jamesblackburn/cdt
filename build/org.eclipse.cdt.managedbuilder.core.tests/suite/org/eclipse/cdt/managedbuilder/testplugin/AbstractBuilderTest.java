@@ -205,7 +205,24 @@ public abstract class AbstractBuilderTest extends TestCase {
 		assertTrue(project.exists());
 		projects.add(project);
 		project.refreshLocal(IResource.DEPTH_INFINITE, null);
+		// Wait for any outstanding work to finish (reconciling build configurations into the workspace).
+		waitForJobManagerIdle();
 		return project;
+	}
+	
+	/**
+	 * Helper method which waits for the JobManager to process outstanding Jobs.
+	 */
+	protected static void waitForJobManagerIdle() {
+		// Wait for any outstanding work to finish (reconciling build configurations into the workspace).
+		while (!Job.getJobManager().isIdle()) {
+			try { 
+				Thread.sleep(5); 
+				// If this is the display thread, tick it
+				if (Display.getCurrent() != null)
+					Display.getDefault().readAndDispatch();
+			} catch (InterruptedException e) { /* don't care */ }
+		}
 	}
 
 	private List<IMarker> getAllMarkers() throws CoreException {

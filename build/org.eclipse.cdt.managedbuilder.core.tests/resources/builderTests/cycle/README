@@ -1,0 +1,18 @@
+App:Debug:
+
+#Reachable-Configs:
+# Lib1:Debug [cdt.managedbuild.config.gnu.lib.debug.891026257]
+# Lib2:Debug [cdt.managedbuild.config.gnu.lib.debug.381088376]
+
+digraph {
+"App:Debug" -> "Lib1:Debug"
+  "Lib1:Debug" -> "Lib2:Debug"
+    "Lib2:Debug" -> "Lib1:Debug"
+}
+
+*NB* the .projects just have normal eclipse level project references.
+It therefore also tests that we correctly handle old-style CDT project references
+before build configurations were moved to the platform.
+
+App:Release:
+No references

@@ -88,7 +88,7 @@ public abstract class AbstractEntryStorage {
 			
 		return settings;
 	}
-	
+
 	/**
 	 * Puts entries for the given levelNum into the passed into SettingLevel.
 	 * The implementation will load these settings from its model

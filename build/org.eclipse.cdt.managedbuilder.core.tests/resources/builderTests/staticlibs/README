@@ -1,0 +1,23 @@
+The Graph between these projects, looks like this:
+
+App;Release:
+#Reachable-Configs:
+# Lib1:Release [cdt.managedbuild.config.gnu.lib.release.598138734]
+# Lib3:Release [cdt.managedbuild.config.gnu.lib.release.590234840]
+# Lib2:Release [cdt.managedbuild.config.gnu.lib.release.763005992]
+# Lib4:Release [cdt.managedbuild.config.gnu.lib.release.990683005]
+
+
+digraph {
+"App:Release" -> "Lib1:Release"
+  "Lib1:Release" -> "Lib3:Release"
+"App:Release" -> "Lib2:Release"
+  "Lib2:Release" -> "Lib3:Release"
+  "Lib2:Release" -> "Lib4:Release"
+"App:Release" -> "Lib3:Release"
+"App:Release" -> "Lib4:Release"
+}
+
+*NB* the .projects just have normal eclipse level project references.
+It therefore also tests that we correctly handle old-style CDT project references
+before build configurations were moved to the platform.
