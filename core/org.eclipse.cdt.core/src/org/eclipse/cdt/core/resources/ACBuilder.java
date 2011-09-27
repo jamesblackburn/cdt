@@ -72,15 +72,21 @@ public abstract class ACBuilder extends IncrementalProjectBuilder implements IMa
 			if (problemMarkerInfo.externalPath != null && ! problemMarkerInfo.externalPath.isEmpty()) {
 				externalLocation = problemMarkerInfo.externalPath.toOSString();
 			}
-			if ((cur != null) && (cur.length > 0)) {
-				for (IMarker element : cur) {
-					int line = ((Integer) element.getAttribute(IMarker.LINE_NUMBER)).intValue();
-					int sev = ((Integer) element.getAttribute(IMarker.SEVERITY)).intValue();
-					String mesg = (String) element.getAttribute(IMarker.MESSAGE);
-					String extloc = (String) element.getAttribute(ICModelMarker.C_MODEL_MARKER_EXTERNAL_LOCATION);
-					if (line == problemMarkerInfo.lineNumber && sev == mapMarkerSeverity(problemMarkerInfo.severity) && mesg.equals(problemMarkerInfo.description)) {
-						if (extloc==externalLocation || (extloc!=null && extloc.equals(externalLocation))) {
-							return;
+			// Check for duplicates before adding the marker.
+			// When build a project, markers are first automatically removed. Checking for markers is expensive
+			// O(n^2) over the course of a build as we iterate over all the resource's markers for each new marker to be added.
+			// Therefore only check for resources in other projects (as we know resources in this project will already have had their markers cleared).
+			if (!markerResource.getProject().equals(getProject())) {
+				if ((cur != null) && (cur.length > 0)) {
+					for (IMarker element : cur) {
+						int line = ((Integer) element.getAttribute(IMarker.LINE_NUMBER)).intValue();
+						int sev = ((Integer) element.getAttribute(IMarker.SEVERITY)).intValue();
+						String mesg = (String) element.getAttribute(IMarker.MESSAGE);
+						String extloc = (String) element.getAttribute(ICModelMarker.C_MODEL_MARKER_EXTERNAL_LOCATION);
+						if (line == problemMarkerInfo.lineNumber && sev == mapMarkerSeverity(problemMarkerInfo.severity) && mesg.equals(problemMarkerInfo.description)) {
+							if (extloc==externalLocation || (extloc!=null && extloc.equals(externalLocation))) {
+								return;
+							}
 						}
 					}
 				}

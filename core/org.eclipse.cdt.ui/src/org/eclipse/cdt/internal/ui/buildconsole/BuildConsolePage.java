@@ -11,6 +11,7 @@
  *     Dmitry Kozlov (CodeSourcery) - Build error highlighting and navigation
  *                                    Save build output
  *     Alex Collins (Broadcom Corp.) - Global build console
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.internal.ui.buildconsole;
 
@@ -131,7 +132,6 @@ public class BuildConsolePage extends Page
 	private boolean fIsLocked;
 	private NextErrorAction fNextErrorAction;
 	private PreviousErrorAction fPreviousErrorAction;
-	private ShowErrorAction fShowErrorAction;
 
 	/**
 	 * @param view
@@ -164,14 +164,7 @@ public class BuildConsolePage extends Page
 		if (project != null) {
 			IBuildConsoleManager consoleManager = getConsole().getConsoleManager();
 			IDocument document = consoleManager.getConsoleDocument(project);
-			IConsole console = consoleManager.getProjectConsole(project);
 			getViewer().setDocument(document);
-			if (console instanceof BuildConsolePartitioner) {
-				BuildConsolePartitioner par = (BuildConsolePartitioner)console;
-				// Show the error, but don't show it in the editor if we are viewing the global console.
-				// Prevents showing errors in the editor for projects other than the current project.
-				showError(par, fShowErrorAction.isChecked() && !(getConsole() instanceof GlobalBuildConsole));
-			}
 		}
 		return null;
 	}
@@ -299,7 +292,6 @@ public class BuildConsolePage extends Page
 		fScrollLockAction.setChecked(fIsLocked);
 		fNextErrorAction = new NextErrorAction(this);
 		fPreviousErrorAction = new PreviousErrorAction(this);
-		fShowErrorAction = new ShowErrorAction(this);
 		fSaveLogAction = new CopyBuildLogAction(this);
 
 		getViewer().setAutoScroll(!fIsLocked);
@@ -354,7 +346,6 @@ public class BuildConsolePage extends Page
 		mgr.insertBefore(IConsoleConstants.OUTPUT_GROUP, new GroupMarker(BuildConsole.ERROR_GROUP));
 		mgr.appendToGroup(BuildConsole.ERROR_GROUP, fNextErrorAction);
 		mgr.appendToGroup(BuildConsole.ERROR_GROUP, fPreviousErrorAction);
-		mgr.appendToGroup(BuildConsole.ERROR_GROUP, fShowErrorAction);
 		mgr.appendToGroup(IConsoleConstants.OUTPUT_GROUP, fSaveLogAction);
 		mgr.appendToGroup(IConsoleConstants.OUTPUT_GROUP, fScrollLockAction);
 		mgr.appendToGroup(IConsoleConstants.OUTPUT_GROUP, fClearOutputAction);
@@ -582,7 +573,7 @@ public class BuildConsolePage extends Page
 					return;
 				}
 			}
-			showError(par, position > 0 || fShowErrorAction.isChecked() );
+			showError(par, true);
 		}
 	}
 
@@ -592,14 +583,12 @@ public class BuildConsolePage extends Page
 	public void showError(BuildConsolePartitioner par, boolean openInEditor) {
 		// Highlight current error
 		BuildConsolePartition p = par.fDocumentMarkerManager.getCurrentPartition();
-		if ( p == null ) return;
+		if (p == null) 
+			return;
 		getViewer().selectPartition(par, p);
 		// Show error in editor if necessary
-		// (always show when absolute positioning, otherwise depends
-		// on fShowErrorAction state)
-		if ( openInEditor ) {
+		if (openInEditor)
 			openErrorInEditor(par.fDocumentMarkerManager.getCurrentErrorMarker());
-		}
 	}
 
 	/**

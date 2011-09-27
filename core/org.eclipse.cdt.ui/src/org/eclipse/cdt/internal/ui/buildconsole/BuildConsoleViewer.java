@@ -11,6 +11,9 @@
  *******************************************************************************/
 package org.eclipse.cdt.internal.ui.buildconsole;
 
+import java.lang.ref.Reference;
+import java.lang.ref.WeakReference;
+
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.DocumentEvent;
 import org.eclipse.jface.text.IDocument;
@@ -38,6 +41,9 @@ public class BuildConsoleViewer extends TextViewer
 				LineBackgroundListener,
 				MouseTrackListener,
 				MouseListener {
+
+	/** Reference to the previous partition we selected */
+	private Reference<BuildConsolePartition> previousParitioner = new WeakReference<BuildConsolePartition>(null);
 
 	protected InternalDocumentListener fInternalDocumentListener = new InternalDocumentListener();
 	/**
@@ -117,22 +123,9 @@ public class BuildConsoleViewer extends TextViewer
 	 */
 	protected void revealEndOfDocument() {
 		if (isAutoScroll()) {
-			IDocument doc = getDocument();
-			int lines = doc.getNumberOfLines();
-			try {
-				// lines are 0-based
-				int lineStartOffset = doc.getLineOffset(lines - 1);
-				StyledText widget = getTextWidget();
-				if (lineStartOffset > 0) {
-					widget.setCaretOffset(lineStartOffset);
-					widget.showSelection();
-				}
-				int lineEndOffset = lineStartOffset + doc.getLineLength(lines - 1);
-				if (lineEndOffset > 0) {
-					widget.setCaretOffset(lineEndOffset);
-				}
-			} catch (BadLocationException e) {
-			}
+			StyledText widget = getTextWidget();
+			widget.setCaretOffset(getDocument().getLength() - 1);
+			widget.showSelection();
 		}
 	}
 
@@ -170,9 +163,11 @@ public class BuildConsoleViewer extends TextViewer
 	 */
 	public void lineGetStyle(LineStyleEvent event) {
 		IDocument document = getDocument();
-		if (document == null) return;
+		if (document == null)
+			return;
 		BuildConsolePartitioner partitioner = (BuildConsolePartitioner) document.getDocumentPartitioner();
-		if (partitioner == null) return;
+		if (partitioner == null)
+			return;
 
 		BuildConsolePartition p = partitioner.fDocumentMarkerManager.getCurrentPartition();
 		Color problemHighlightedColor =  partitioner.fManager.getProblemHighlightedColor();
@@ -200,10 +195,10 @@ public class BuildConsoleViewer extends TextViewer
 
 	public void selectPartition(BuildConsolePartitioner partitioner, BuildConsolePartition p) {
 		try {
-			int start = partitioner.getDocument().getLineOfOffset(p.getOffset());
-			int end = partitioner.getDocument().getLineOfOffset(p.getOffset()+p.getLength()-1);
+			if (fAutoScroll) {
+				int start = partitioner.getDocument().getLineOfOffset(p.getOffset());
+				int end = partitioner.getDocument().getLineOfOffset(p.getOffset()+p.getLength()-1);
 
-			if ( fAutoScroll ) {
 				// Check if area around this line is visible, scroll if needed
 				int top = getTopIndex();
 				int bottom = getBottomIndex();
@@ -214,9 +209,15 @@ public class BuildConsoleViewer extends TextViewer
 				}
 			}
 
-			// Select line
 			StyledText st = getTextWidget();
-			st.redrawRange(0, partitioner.getDocument().getLength(), true);
+			// Redrawing the whole document is massively inefficient... (~1s for a 5000 line document on GTK)
+			// Only one line is selected a time, so redraw the previously selected partition, and the currently
+			// selected partition.
+			BuildConsolePartition previous = previousParitioner.get();
+			if (previous != null)
+				st.redrawRange(previous.getOffset(), previous.getLength(), false);
+			previousParitioner = new WeakReference<BuildConsolePartition>(p);
+			st.redrawRange(p.getOffset(), p.getLength(), false);
 
 		} catch (BadLocationException e) {
 			CUIPlugin.log(e);
@@ -236,11 +237,14 @@ public class BuildConsoleViewer extends TextViewer
 
 	public void mouseDoubleClick(MouseEvent e) {
 		int offset = -1;
+//		long time = System.currentTimeMillis();
 		try {
 			Point p = new Point(e.x, e.y);
 			offset = getTextWidget().getOffsetAtLocation(p);
 			BuildConsole.getCurrentPage().moveToError(offset);
 		} catch (IllegalArgumentException ex) {
+//		} finally {
+//			System.out.println("Double-Click: " + (System.currentTimeMillis() - time));
 		}
 	}
 

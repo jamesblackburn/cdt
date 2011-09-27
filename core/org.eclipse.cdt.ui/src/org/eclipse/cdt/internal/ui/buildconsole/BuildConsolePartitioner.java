@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2002, 2010 QNX Software Systems and others.
+ * Copyright (c) 2002, 2011 QNX Software Systems and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -10,16 +10,18 @@
  *     Dmitry Kozlov (CodeSourcery) - Build error highlighting and navigation
  *     Andrew Gvozdev (Quoin Inc.)  - Copy build log (bug 306222)
  *     Alex Collins (Broadcom Corp.) - Global console
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.internal.ui.buildconsole;
 
+import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Vector;
+import java.util.NoSuchElementException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
@@ -42,7 +44,6 @@ import org.eclipse.ui.console.ConsolePlugin;
 import org.eclipse.cdt.core.ConsoleOutputStream;
 import org.eclipse.cdt.core.ProblemMarkerInfo;
 import org.eclipse.cdt.core.resources.IConsole;
-import org.eclipse.cdt.core.resources.ResourcesUtil;
 import org.eclipse.cdt.ui.CUIPlugin;
 
 import org.eclipse.cdt.internal.ui.preferences.BuildConsolePreferencePage;
@@ -54,12 +55,12 @@ public class BuildConsolePartitioner
 			IConsole,
 			IPropertyChangeListener {
 
-	private IProject fProject;
+	private final IProject fProject;
 
 	/**
 	 * List of partitions
 	 */
-	List<ITypedRegion> fPartitions = new ArrayList<ITypedRegion>(5);
+	List<BuildConsolePartition> fPartitions = new ArrayList<BuildConsolePartition>(5);
 
 	private int fMaxLines;
 
@@ -73,49 +74,34 @@ public class BuildConsolePartitioner
 	boolean killed;
 	BuildConsoleManager fManager;
 
+	/*
+	 * Keep tabs on the last entry so we can defer UI updates until needed
+	 */
+	StringBuilder lastLogEntry = new StringBuilder();
+	ProblemMarkerInfo lastMarker;
+	BuildConsoleStreamDecorator lastStream;
+
 	/**
 	 * A queue of stream entries written to standard out and standard err.
 	 * Entries appended to the end of the queue and removed from the front.
-	 * Intentionally a vector to obtain synchronization as entries are added and
-	 * removed.
 	 */
-	Vector<StreamEntry> fQueue = new Vector<StreamEntry>(5);
+	ConcurrentLinkedQueue<StreamEntry> fQueue = new ConcurrentLinkedQueue<StreamEntry>();
 
 	private URI fLogURI;
 	private OutputStream fLogStream;
 
-	private class StreamEntry {
-		static public final int EVENT_APPEND = 0;
-		static public final int EVENT_OPEN_LOG = 1;
-		static public final int EVENT_CLOSE_LOG = 2;
-		static public final int EVENT_OPEN_APPEND_LOG = 3;
-
+	private static class StreamEntry {
 		/** Identifier of the stream written to. */
-		private BuildConsoleStreamDecorator fStream;
+		private final BuildConsoleStreamDecorator fStream;
 		/** The text written */
-		private StringBuffer fText = null;
+		private final String fText;
 		/** Problem marker corresponding to the line of text */
-		private ProblemMarkerInfo fMarker;
-		/** Type of event **/
-		private int eventType;
+		private final ProblemMarkerInfo fMarker;
 
 		public StreamEntry(String text, BuildConsoleStreamDecorator stream, ProblemMarkerInfo marker) {
-			fText = new StringBuffer(text);
+			fText = text;
 			fStream = stream;
 			fMarker = marker;
-			eventType = EVENT_APPEND;
-		}
-
-		/**
-		 * This constructor is used for special events such as clear console or close log.
-		 *
-		 * @param event - kind of event.
-		 */
-		public StreamEntry(int event) {
-			fText = null;
-			fStream = null;
-			fMarker = null;
-			eventType = event;
 		}
 
 		/**
@@ -125,19 +111,11 @@ public class BuildConsolePartitioner
 			return fStream;
 		}
 
-		public void appendText(String text) {
-			fText.append(text);
-		}
-
-		public int size() {
-			return fText.length();
-		}
-
 		/**
 		 * Returns the text written
 		 */
 		public String getText() {
-			return fText.toString();
+			return fText;
 		}
 
 		/**
@@ -146,14 +124,6 @@ public class BuildConsolePartitioner
 		public ProblemMarkerInfo getMarker() {
 			return fMarker;
 		}
-
-		/**
-		 * Returns type of event
-		 */
-		public int getEventType() {
-			return eventType;
-		}
-
 	}
 
 	/**
@@ -181,8 +151,7 @@ public class BuildConsolePartitioner
 	 * when opening the output stream.
 	 */
 	public void setStreamOpened() {
-		fQueue.add(new StreamEntry(StreamEntry.EVENT_OPEN_LOG));
-		asyncProcessQueue();
+		logOpen(false);
 	}
 
 	/**
@@ -191,8 +160,7 @@ public class BuildConsolePartitioner
 	 * emptying the log file.
 	 */
 	public void setStreamAppend() {
-		fQueue.add(new StreamEntry(StreamEntry.EVENT_OPEN_APPEND_LOG));
-		asyncProcessQueue();
+		logOpen(true);
 	}
 
 	/**
@@ -201,36 +169,60 @@ public class BuildConsolePartitioner
 	 * stream entries in the queue being worked on in the background.
 	 */
 	public void setStreamClosed() {
-		fQueue.add(new StreamEntry(StreamEntry.EVENT_CLOSE_LOG));
-		asyncProcessQueue();
+		if (lastLogEntry.length() > 0) {
+			fQueue.add(new StreamEntry(lastLogEntry.toString(), lastStream, lastMarker));
+			lastLogEntry.setLength(0);
+			lastMarker = null;
+			lastStream = null;
+			queueProcessor.schedule();
+		}
+
+		logClose();
 	}
 
 	/**
-	 * Adds the new text to the document.
-	 *
-	 * @param text - the text to append.
-	 * @param stream - the stream to append to.
+	/**
+	 * Open the log
+	 * @param append Set to true if the log should be opened for appending, false for overwriting.
 	 */
-	public void appendToDocument(String text, BuildConsoleStreamDecorator stream, ProblemMarkerInfo marker) {
-		boolean addToQueue = true;
-		synchronized (fQueue) {
-			int i = fQueue.size();
-			if (i > 0) {
-				StreamEntry entry = fQueue.get(i - 1);
-				// if last stream is the same and we have not exceeded our
-				// display write limit, append.
-				if (entry.getStream()==stream && entry.getEventType()==StreamEntry.EVENT_APPEND && entry.getMarker()==marker && entry.size()<10000) {
-					entry.appendText(text);
-					addToQueue = false;
-				}
-			}
-			if (addToQueue) {
-				fQueue.add(new StreamEntry(text, stream, marker));
+	private void logOpen(boolean append) {
+		fLogURI = fManager.getLogURI(fProject);
+		if (fLogURI != null) {
+			try {
+				IFileStore logStore = EFS.getStore(fLogURI);
+				// Ensure the directory exists before opening the file
+				IFileStore dir = logStore.getParent();
+				if (dir != null)
+					dir.mkdir(EFS.NONE, null);
+				int opts = append ? EFS.APPEND : EFS.NONE;
+				fLogStream = new BufferedOutputStream(logStore.openOutputStream(opts, null));
+			} catch (CoreException e) {
+				CUIPlugin.log(e);
 			}
 		}
-		if (addToQueue) {
-			asyncProcessQueue();
+	}
+
+	private void log(String text) {
+		if (fLogStream != null) {
+			try {
+				fLogStream.write(text.getBytes());
+			} catch (IOException e) {
+				CUIPlugin.log(e);
+			}
 		}
+	}
+
+	private void logClose() {
+		if (fLogStream != null) {
+			try {
+				fLogStream.close();
+			} catch (IOException e) {
+				CUIPlugin.log(e);
+			}
+			fLogStream = null;
+		}
+//		if (fLogURI != null)
+//			ResourcesUtil.refreshWorkspaceFiles(fLogURI);
 	}
 
 	/**
@@ -238,112 +230,134 @@ public class BuildConsolePartitioner
 	 * Note that all these are processed by the same thread - the user-interface thread
 	 * as of {@link Display#asyncExec(Runnable)}.
 	 */
-	private void asyncProcessQueue() {
-		Runnable r = new Runnable() {
-			public void run() {
-				StreamEntry entry;
-				try {
-					entry = fQueue.remove(0);
-				} catch (ArrayIndexOutOfBoundsException e) {
-					return;
-				}
-				switch (entry.getEventType()) {
-				case StreamEntry.EVENT_OPEN_LOG:
-				case StreamEntry.EVENT_OPEN_APPEND_LOG:
-					logOpen(entry.getEventType() == StreamEntry.EVENT_OPEN_APPEND_LOG);
-					break;
-				case StreamEntry.EVENT_APPEND:
-					fLastStream = entry.getStream();
-					try {
-						warnOfContentChange(fLastStream);
+	public void appendToDocument(String text, BuildConsoleStreamDecorator stream, ProblemMarkerInfo marker) {
+		// Buffer up to 1k of content
+		final int BUFFER_SIZE = 1 * 1024;
 
-						if (fLastStream == null) {
-							// special case to empty document
-							fPartitions.clear();
-							fDocumentMarkerManager.clear();
-							fDocument.set(""); //$NON-NLS-1$
-						}
-						String text = entry.getText();
-						if (text.length()>0) {
-							addStreamEntryToDocument(entry);
-							log(text);
-							checkOverflow();
-						}
-					} catch (BadLocationException e) {
-					}
-					break;
-				case StreamEntry.EVENT_CLOSE_LOG:
-					logClose();
-					break;
-				}
-			}
+		boolean addToQueue = true;
 
-			/**
-			 * Open the log
-			 * @param append Set to true if the log should be opened for appending, false for overwriting.
-			 */
-			private void logOpen(boolean append) {
-				fLogURI = fManager.getLogURI(fProject);
-				if (fLogURI!=null) {
-					try {
-						IFileStore logStore = EFS.getStore(fLogURI);
-						// Ensure the directory exists before opening the file
-						IFileStore dir = logStore.getParent();
-						if (dir != null)
-							dir.mkdir(EFS.NONE, null);
-						int opts = append ? EFS.APPEND : EFS.NONE;
-						fLogStream = logStore.openOutputStream(opts, null);
-					} catch (CoreException e) {
-						CUIPlugin.log(e);
-					} finally {
-						ResourcesUtil.refreshWorkspaceFiles(fLogURI);
-					}
-				}
-			}
-
-			private void log(String text) {
-				if (fLogStream!=null) {
-					try {
-						fLogStream.write(text.getBytes());
-						if (fQueue.isEmpty()) {
-							fLogStream.flush();
-						}
-					} catch (IOException e) {
-						CUIPlugin.log(e);
-					} finally {
-						ResourcesUtil.refreshWorkspaceFiles(fLogURI);
-					}
-				}
-			}
-
-			private void logClose() {
-				if (fLogStream!=null) {
-					try {
-						fLogStream.close();
-					} catch (IOException e) {
-						CUIPlugin.log(e);
-					} finally {
-						ResourcesUtil.refreshWorkspaceFiles(fLogURI);
-					}
-					fLogStream = null;
-				}
-			}
-
-		};
-		Display display = CUIPlugin.getStandardDisplay();
-		if (display != null) {
-			display.asyncExec(r);
+		// Try to append to the previous entry
+		if (lastStream == stream && lastMarker == marker && lastLogEntry.length() < BUFFER_SIZE) {
+			lastLogEntry.append(text);
+			addToQueue = false;
 		}
+
+		// Push items to the queue for update.
+		if (addToQueue) {
+			// Add the currently cached item
+			if (lastLogEntry.length() > 0) {
+				fQueue.add(new StreamEntry(lastLogEntry.toString(), lastStream, lastMarker));
+				lastLogEntry.setLength(0);
+			}
+
+			// While the queue is larger than the number of lines that will fit in the console, remove
+			// from the front.  This bounds the UI console queue on the size of the console.  Any more than
+			// this will cause unnecessary work.  (NB: This is an underestimate, as the some queue entries 
+			// will span multiple lines).
+			while (fQueue.size() > fMaxLines)
+				fQueue.poll();
+
+			// Cache the current item
+			lastLogEntry.append(text);
+			lastMarker = marker;
+			lastStream = stream;
+		}
+
+		if (!fQueue.isEmpty())
+			queueProcessor.schedule();
+
+		// Write the text out to the log file
+		log(text);
 	}
 
-	private void addStreamEntryToDocument(StreamEntry entry) throws BadLocationException {
+	static volatile int count;
+	/** The current async runnable updating the console */
+	private class QueueProcessor implements Runnable {
+
+		/** flag which indicates whether the QueueProcessor is scheduled to run */
+		volatile boolean scheduled;
+
+		/**
+		 * Schedule the Queue processing job
+		 */
+		public void schedule() {
+			if (scheduled)
+				return;
+			scheduled = true;
+			Display display = CUIPlugin.getStandardDisplay();
+			if (display != null) {
+				display.asyncExec(this);
+			}
+		}
+
+		/**
+		 * Process entries from fQueue until either the queue has been emptied
+		 * or 50ms has elapsed.  Re-schedules itself if the queue isn't empty.
+		 */
+		public void run() {
+			/** Run for at most 50ms, or until the queue is empty */
+			final long start = System.currentTimeMillis();
+			StringBuilder sb = new StringBuilder();
+			int i = 0;
+			try {
+				while (true) {
+					i++;
+					// Keep the UI live: Don't do more than 50ms of work at a time here.
+					// Updating the document may take significantly more time.
+					if (i % 10 == 0 && System.currentTimeMillis() - start > 50) {
+//						System.out.println("Processed: " + i + " items in: " + (System.currentTimeMillis() - start) + " " + fQueue.size() + " remaining.");
+						break;
+					}
+
+					StreamEntry entry;
+					try {
+						entry = fQueue.remove();
+					} catch (NoSuchElementException e) {
+//						System.out.println("Processed: " + i + " items in: " + (System.currentTimeMillis() - start) + " " + fQueue.size() + " remaining.");
+						break;
+					}
+
+					if (fLastStream != entry.getStream()) {
+						fLastStream = entry.getStream();
+						warnOfContentChange(fLastStream);
+					}
+
+					if (fLastStream == null) {
+						// special case to empty document
+						fPartitions.clear();
+						fDocumentMarkerManager.clear();
+						fDocument.set(""); //$NON-NLS-1$
+						sb.setLength(0);
+					}
+					String text = entry.getText();
+					if (text.length() > 0)
+						addStreamEntryToDocument(sb, entry);
+				}
+
+				// fDocument.replace is expensive, so append once per UIJob run
+				// This improves throughput by many, many X
+				fDocument.replace(fDocument.getLength(), 0, sb.toString());
+			} catch (BadLocationException e) {
+			} finally {
+				// Perform cleanup
+				scheduled = false;
+				warnOfContentChange(fLastStream);
+				checkOverflow();
+				if (!fQueue.isEmpty())
+					schedule();
+//				System.out.println("Leaving QueueProcessor: " + (System.currentTimeMillis() - start) + "ms");
+			}
+		}
+	}
+	QueueProcessor queueProcessor = new QueueProcessor();
+
+	private void addStreamEntryToDocument(StringBuilder sb, StreamEntry entry) throws BadLocationException {
 		ProblemMarkerInfo marker = entry.getMarker();
 		if (marker==null) {
 			// It is plain unmarkered console output
 			addPartition(new BuildConsolePartition(fLastStream,
-					fDocument.getLength(),
-					entry.getText().length(),
-					BuildConsolePartition.CONSOLE_PARTITION_TYPE));
+					fDocument.getLength() + sb.length(),
+					entry.getText().length()));
 		} else {
 			// this text line in entry is markered with ProblemMarkerInfo,
 			// create special partition for it.
@@ -356,11 +370,11 @@ public class BuildConsolePartitioner
 				errorPartitionType = BuildConsolePartition.ERROR_PARTITION_TYPE;
 			}
 			addPartition(new BuildConsolePartition(fLastStream,
-					fDocument.getLength(),
+					fDocument.getLength() + sb.length(),
 					entry.getText().length(),
 					errorPartitionType, marker));
 		}
-		fDocument.replace(fDocument.getLength(), 0, entry.getText());
+		sb.append(entry.getText());
 	}
 
 	void warnOfContentChange(BuildConsoleStreamDecorator stream) {
@@ -424,15 +438,21 @@ public class BuildConsolePartitioner
 			return fPartitions.toArray(new ITypedRegion[fPartitions.size()]);
 		}
 		int end = offset + length;
-		List<ITypedRegion> list = new ArrayList<ITypedRegion>();
-		for (int i = 0; i < fPartitions.size(); i++) {
+		List<ITypedRegion> list = new ArrayList<ITypedRegion>(2);
+		// As partitions are added to the end of the document, iterate backwards through the 
+		// partition collection otherwise this becomes O(n^2) rather than linear.
+		int i = fPartitions.size();
+		while (i-- > 0) {
 			ITypedRegion partition = fPartitions.get(i);
 			int partitionStart = partition.getOffset();
 			int partitionEnd = partitionStart + partition.getLength();
-			if ( (offset >= partitionStart && offset <= partitionEnd) ||
+			if ( (offset >= partitionStart && offset < partitionEnd) ||
 					(offset < partitionStart && end >= partitionStart)) {
 				list.add(partition);
 			}
+			// Partitions are in order, so if the end doesn't overlap, bail-out
+			if (offset + length > partitionEnd)
+				break;
 		}
 		return list.toArray(new ITypedRegion[list.size()]);
 	}
@@ -441,7 +461,8 @@ public class BuildConsolePartitioner
 	 * @see org.eclipse.jface.text.IDocumentPartitioner#getPartition(int)
 	 */
 	public ITypedRegion getPartition(int offset) {
-		for (int i = 0; i < fPartitions.size(); i++) {
+		int i = fPartitions.size();
+		while (i-- > 0) {
 			ITypedRegion partition = fPartitions.get(i);
 			int start = partition.getOffset();
 			int end = start + partition.getLength();
@@ -457,6 +478,7 @@ public class BuildConsolePartitioner
 		if (getDocument().getLength() == 0) {
 			// cleared
 			fPartitions.clear();
+			fDocumentMarkerManager.clear();
 			return new Region(0, 0);
 		}
 		ITypedRegion[] affectedRegions = computePartitioning(event.getOffset(), text.length());
@@ -483,46 +505,33 @@ public class BuildConsolePartitioner
 		if (fMaxLines >= 0) {
 			int nLines = fDocument.getNumberOfLines();
 			if (nLines > fMaxLines + 1) {
-				int overflow = 0;
 				try {
-					overflow = fDocument.getLineOffset(nLines - fMaxLines);
-				} catch (BadLocationException e1) {
-				}
-				// update partitions
-				List<ITypedRegion> newParitions = new ArrayList<ITypedRegion>(fPartitions.size());
-				Iterator<ITypedRegion> partitions = fPartitions.iterator();
-				while (partitions.hasNext()) {
-					ITypedRegion region = partitions.next();
-					if (region instanceof BuildConsolePartition) {
-						BuildConsolePartition messageConsolePartition = (BuildConsolePartition)region;
-
-						ITypedRegion newPartition = null;
-						int offset = region.getOffset();
+					// We've overflowed, as partitions are being removed, clear the manager
+					// which keeps track of which line is currently selected...
+					fDocumentMarkerManager.clear();
+					int overflow = fDocument.getLineOffset(nLines - fMaxLines);
+					// update partitions
+					List<BuildConsolePartition> newParitions = new ArrayList<BuildConsolePartition>(fPartitions.size());
+					for (BuildConsolePartition messageConsolePartition : fPartitions) {
+						int offset = messageConsolePartition.getOffset();
 						String type = messageConsolePartition.getType();
 						if (offset < overflow) {
-							int endOffset = offset + region.getLength();
+							int endOffset = offset + messageConsolePartition.getLength();
 							if (endOffset < overflow || BuildConsolePartition.isProblemPartitionType(type)) {
-								// remove partition,
-								// partitions with problem markers can't be split - remove them too
+								// remove partition - partitions with problem markers can't be split - remove them too
+								continue;
 							} else {
 								// split partition
-								int length = endOffset - overflow;
-								newPartition = messageConsolePartition.createNewPartition(0, length, type);
+								messageConsolePartition.fOffset = 0;
+								messageConsolePartition.fLength = endOffset - overflow;
 							}
 						} else {
 							// modify partition offset
-							offset = messageConsolePartition.getOffset() - overflow;
-							newPartition = messageConsolePartition.createNewPartition(offset, messageConsolePartition.getLength(), type);
+							messageConsolePartition.fOffset -= overflow;
 						}
-						if (newPartition != null) {
-							newParitions.add(newPartition);
-						}
+						newParitions.add(messageConsolePartition);
 					}
-				}
-				fPartitions = newParitions;
-				fDocumentMarkerManager.moveToFirstError();
-
-				try {
+					fPartitions = newParitions;
 					fDocument.replace(0, overflow, ""); //$NON-NLS-1$
 				} catch (BadLocationException e) {
 				}
@@ -533,22 +542,21 @@ public class BuildConsolePartitioner
 	/**
 	 * Adds a new partition, combining with the previous partition if possible.
 	 */
-	private BuildConsolePartition addPartition(BuildConsolePartition partition) {
+	private void addPartition(BuildConsolePartition partition) {
 		if (fPartitions.isEmpty()) {
 			fPartitions.add(partition);
 		} else {
-			int index = fPartitions.size() - 1;
-			BuildConsolePartition last = (BuildConsolePartition)fPartitions.get(index);
+			BuildConsolePartition last = fPartitions.get(fPartitions.size() - 1);
 			if (last.canBeCombinedWith(partition)) {
 				// replace with a single partition
-				partition = last.combineWith(partition);
-				fPartitions.set(index, partition);
+				assert last.fOffset < partition.fOffset;
+				assert last.fOffset + last.fLength == partition.fOffset;
+				last.fLength += partition.fLength;
 			} else {
 				// different kinds - add a new parition
 				fPartitions.add(partition);
 			}
 		}
-		return partition;
 	}
 
 	public IConsole getConsole() {

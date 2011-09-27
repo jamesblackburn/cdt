@@ -42,12 +42,7 @@ public class BuildOutputStream extends ConsoleOutputStream implements IErrorMark
 	}
 
 	@Override
-	public void flush() throws IOException {
-	}
-
-	@Override
 	public void close() throws IOException {
-		flush();
 		fPartitioner.setStreamClosed();
 	}
 
