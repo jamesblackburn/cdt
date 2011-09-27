@@ -239,7 +239,7 @@ public class ManagedBuilderCorePlugin extends Plugin {
 	/**
 	 * Log a String info message to the log
 	 * @param str string info message to log
-	 * @since 7.0
+	 * @since 8.0
 	 */
 	public static void warn(String str) {
 		log(new Status(IStatus.WARNING, getUniqueIdentifier(), IStatus.OK, str, null));

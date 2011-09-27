@@ -219,8 +219,8 @@ public abstract class AbstractBuilderTest extends TestCase {
 			try { 
 				Thread.sleep(5); 
 				// If this is the display thread, tick it
-				if (Display.getCurrent() != null)
-					Display.getDefault().readAndDispatch();
+//				if (Display.getCurrent() != null)
+//					Display.getDefault().readAndDispatch();
 			} catch (InterruptedException e) { /* don't care */ }
 		}
 	}

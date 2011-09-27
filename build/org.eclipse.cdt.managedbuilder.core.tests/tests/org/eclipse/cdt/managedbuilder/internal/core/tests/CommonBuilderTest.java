@@ -60,9 +60,9 @@ public class CommonBuilderTest extends AbstractBuilderTest {
 		super.setUp();
 		setAutoBuilding(false);
 		// These tests are testing the build delta, which we trust.
-		ACBuilder.setAlwaysBuildStaticLibraries(false);
+//		ACBuilder.setAlwaysBuildStaticLibraries(false);
 		ACBuilder.setBuildConfigResourceChanges(true);
-		ACBuilder.setStopOnBuildError(false);
+//		ACBuilder.setStopOnBuildError(false);
 	}
 
 	/**
@@ -441,7 +441,7 @@ public class CommonBuilderTest extends AbstractBuilderTest {
 		ResourceDeltaVerifier verifier = new ResourceDeltaVerifier();
 		
 		// Enable stop on build error
-		ACBuilder.setStopOnBuildError(true);
+//		ACBuilder.setStopOnBuildError(true);
 
 		// Lib2 should compile:
 		List<IResource> resources = new ArrayList<IResource>();
