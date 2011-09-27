@@ -181,7 +181,6 @@ public class BuildConsolePartitioner
 	}
 
 	/**
-	/**
 	 * Open the log
 	 * @param append Set to true if the log should be opened for appending, false for overwriting.
 	 */
@@ -226,9 +225,11 @@ public class BuildConsolePartitioner
 	}
 
 	/**
-	 * Asynchronous processing of stream entries to append to console.
-	 * Note that all these are processed by the same thread - the user-interface thread
-	 * as of {@link Display#asyncExec(Runnable)}.
+	 * Method which actually posts the event to the queue for UI processing.
+	 * All queue updates should be funnelled through here.
+	 * @param text to append
+	 * @param stream 
+	 * @param marker
 	 */
 	public void appendToDocument(String text, BuildConsoleStreamDecorator stream, ProblemMarkerInfo marker) {
 		// Buffer up to 1k of content

@@ -470,7 +470,7 @@ public class BuildConsoleManager implements IBuildConsoleManager, IResourceChang
 	 * @return logging preferences for a given project.
 	 * @param project to get logging preferences for, can't be {@code null}.
 	 */
-	public Preferences getBuildLogPreferences(IProject project) {
+	public static Preferences getBuildLogPreferences(IProject project) {
 		return new LocalProjectScope(project).getNode(PREF_QUALIFIER).node(BUILD_CONSOLE_NODE);
 	}
 
@@ -478,7 +478,7 @@ public class BuildConsoleManager implements IBuildConsoleManager, IResourceChang
 	 * @return default location of logs for a project.
 	 * @param project to get default log location for, can't be {@code null}.
 	 */
-	public String getDefaultConsoleLogLocation(IProject project) {
+	public static String getDefaultConsoleLogLocation(IProject project) {
 		IPath defaultLogLocation = CUIPlugin.getDefault().getStateLocation().append(project.getName() + PROJECT_LOG_EXT);
 		return defaultLogLocation.toOSString();
 	}
