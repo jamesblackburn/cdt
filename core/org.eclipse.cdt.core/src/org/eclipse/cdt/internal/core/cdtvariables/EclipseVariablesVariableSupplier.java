@@ -23,6 +23,8 @@ import org.eclipse.cdt.core.cdtvariables.ICdtVariableStatus;
 import org.eclipse.cdt.utils.cdtvariables.ICdtVariableSupplier;
 import org.eclipse.cdt.utils.cdtvariables.IVariableContextInfo;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.core.variables.IDynamicVariable;
 import org.eclipse.core.variables.IStringVariable;
 import org.eclipse.core.variables.IStringVariableManager;
@@ -101,12 +103,29 @@ public class EclipseVariablesVariableSupplier implements ICdtVariableSupplier {
 				if(fArgument == null || dynamicVar.supportsArgument()){
 					try{
 						fStringValue = dynamicVar.getValue(fArgument);
-					}catch(CoreException e){
+					} catch(CoreException e) {
 						fStringValue = null;
+						// Bug 244286: Try a bit harder - hunt for substring from the path, and generate the location that would be created.
+						if ("workspace_loc".equals(var.getName())) { //$NON-NLS-1$
+							IPath path = new Path(fArgument);
+							IPath suffix = Path.EMPTY;
+							while (path.segmentCount() > 0) {
+								suffix = new Path(path.lastSegment()).append(suffix);
+								path = path.removeLastSegments(1);
+								try { 
+									fStringValue = dynamicVar.getValue(path.toString());
+									if (fStringValue != null) {
+										fStringValue = new Path(fStringValue).append(suffix).toString();
+										break;
+									}
+								} catch (CoreException e2) {
+									// Go around again
+								}
+							}
+						}
 					}
 				}else
 					fStringValue = null;
-					
 			}else if(var instanceof IValueVariable){
 				if(fArgument == null)
 					fStringValue = ((IValueVariable)var).getValue();
