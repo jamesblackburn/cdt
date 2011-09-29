@@ -4,9 +4,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.eclipse.cdt.core.CCorePlugin;
-import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
-import org.eclipse.cdt.managedbuilder.core.IConfiguration;
-import org.eclipse.cdt.managedbuilder.core.ManagedBuildManager;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceChangeEvent;
@@ -14,44 +11,54 @@ import org.eclipse.core.resources.IResourceChangeListener;
 import org.eclipse.core.resources.IResourceDelta;
 import org.eclipse.core.resources.IResourceDeltaVisitor;
 import org.eclipse.core.runtime.CoreException;
+import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.ILock;
 import org.eclipse.core.runtime.jobs.Job;
 
 import ResourceCfgDiscovery.Activator;
-import ResourceCfgDiscovery.ui.BinaryFilePropertyPage;
 
 public class ExeChangedListener implements IResourceChangeListener {
 
 	private static final ILock lock = Job.getJobManager().newLock();
 
+	/**
+	 * Create the Exe change listener
+	 * @param project
+	 */
+	public ExeChangedListener() {
+	}
+
 	public void resourceChanged(IResourceChangeEvent event) {
 		try {
+			// Map of IFile to configuration ID
 			final Map<IFile, String> toUpdate = new HashMap<IFile, String>();
 			event.getDelta().accept(new IResourceDeltaVisitor() {
 				public boolean visit(IResourceDelta delta) throws CoreException {
 					if (delta.getKind() == IResourceDelta.CHANGED) {
 						IResource res = delta.getResource();
-						if (res.getType() != IResource.ROOT) {
+
+						if (res.getType() != IResource.ROOT) { // Only interested in Projects...
 							// If not New Style cdt project, don't descend
-							if (CCorePlugin.getDefault().getProjectDescription(res.getProject()) == null ||
+							if (CCorePlugin.getDefault().getProjectDescription(res.getProject(), false) == null ||
 									!CCorePlugin.getDefault().isNewStyleProject(res.getProject()))
 								return false;
-							// If any of the configurations have managed build on, don't descend
-							for (IConfiguration config : ManagedBuildManager.getBuildInfo(res.getProject()).getManagedProject().getConfigurations())
-								if (config.isManagedBuildOn())
-									return false;
 
-							// Look for the Configuration type flag
-							if (res.getType() == IResource.FILE) {
-								String cfgID = res.getPersistentProperty(BinaryFilePropertyPage.RESOURCE_TIED_TO_CONFIG_ID_KEY);
-								if (cfgID != null) {
-									ICConfigurationDescription cfg = CCorePlugin.getDefault().getProjectDescription(res.getProject()).getConfigurationById(cfgID);
-									toUpdate.put((IFile)res, cfg.getId());
+							Map<String, String> binaresToConfigMap = DwarfSettingsProvider.getBinariesConfigMap(res.getProject());
+
+							for (Map.Entry<String, String> e : binaresToConfigMap.entrySet()) {
+								IPath binProjRelPath = new Path(e.getKey());
+								if (res.getProjectRelativePath().isPrefixOf(binProjRelPath)) {
+									IResourceDelta d = delta.findMember(binProjRelPath.removeFirstSegments(res.getProjectRelativePath().segmentCount()));
+									if (d != null)
+										toUpdate.put((IFile)d.getResource(), e.getValue());
 								}
 							}
+							// No more descent, already searched
+							return false;
 						}
 					}
 					return true;

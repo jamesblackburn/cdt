@@ -14,8 +14,6 @@ import org.eclipse.cdt.utils.ui.controls.ControlFactory;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
-import org.eclipse.core.runtime.CoreException;
-import org.eclipse.core.runtime.QualifiedName;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -29,16 +27,17 @@ import org.eclipse.swt.widgets.Label;
 import org.eclipse.ui.IWorkbenchPropertyPage;
 import org.eclipse.ui.dialogs.PropertyPage;
 
-import ResourceCfgDiscovery.Activator;
+import ResourceCfgDiscovery.binaryInfo.DwarfSettingsProvider;
 import ResourceCfgDiscovery.binaryInfo.ExeChangedListener;
 
-public class BinaryFilePropertyPage extends PropertyPage implements
-IWorkbenchPropertyPage {
+/**
+ * UI property page to allow tying a Binary to a build configuration
+ */
+public class BinaryFilePropertyPage extends PropertyPage implements IWorkbenchPropertyPage {
 
-	public static final QualifiedName RESOURCE_TIED_TO_CONFIG_ID_KEY = new QualifiedName("com.broadcom.eclipse.cdt.core","BinaryFileConfigID");
 	private static final String BUILD_CONFIGURATION_DEFAULT = "None";
 
-	IResource resource = null;
+	IFile resource = null;
 	Combo buildConfigs;
 	Button manageConfigsButton;
 	private String targetConfigurationID = BUILD_CONFIGURATION_DEFAULT;
@@ -54,15 +53,8 @@ IWorkbenchPropertyPage {
 
 		// Attempt to load the configuration ID from the IResource persistent properties
 		final IResource res = (IResource)getElement().getAdapter(IResource.class);
-		if (res != null && res.exists()) {
-			resource = res;
-			try {
-				targetConfigurationID = res.getPersistentProperty(RESOURCE_TIED_TO_CONFIG_ID_KEY);
-				if (targetConfigurationID == null)
-					targetConfigurationID = BUILD_CONFIGURATION_DEFAULT;
-			} catch (CoreException e) {
-				// Don't care, resource will default to "None"
-			}
+		if (res != null && res.exists() && res.getType() == IResource.FILE) {
+			resource = (IFile)res;
 
 			// Main text label
 			Label l = new Label(comp, SWT.WRAP);
@@ -82,6 +74,11 @@ IWorkbenchPropertyPage {
 						"This Project seems to have at least one configuration where managed build is on.");
 				return comp;
 			}
+
+			// Fetch the configuration ID for the specified binary (or none)
+			targetConfigurationID = DwarfSettingsProvider.getBinariesConfigMap(res.getProject()).get(res.getProjectRelativePath().toOSString());
+			if (targetConfigurationID == null)
+				targetConfigurationID = BUILD_CONFIGURATION_DEFAULT;
 
 			l.setText("Specify the CDT Build configuration that this Binary is connected to.\n\n" +
 					"If the binary is built with '-g3' the -D, -U, -I and -include switches " +
@@ -140,7 +137,7 @@ IWorkbenchPropertyPage {
 		buildConfigs.removeAll();
 		buildConfigs.add(BUILD_CONFIGURATION_DEFAULT);
 		for (ICConfigurationDescription cfg :
-				CoreModel.getDefault().getProjectDescription(resource.getProject()).getConfigurations()) {
+				CoreModel.getDefault().getProjectDescription(resource.getProject(), false).getConfigurations()) {
 			// Don't allow selections of default configurations... (or there'll be pain when they create further configs)
 			// Derived configurations have an additional qualifier on the end
 			// FIXME is there a better way of doing this?
@@ -180,24 +177,20 @@ IWorkbenchPropertyPage {
 					return;
 				}
 			}
+			// Failed, select 'None...'
+			buildConfigs.select(0);
 		}
-		// Failed, select 'Default...'
-		buildConfigs.select(0);
 	}
 
 	@Override
 	public boolean performOk() {
 		if (resource != null) {
-			try {
-				final String configID = getConfigurationID();
-				if (configID.equals(BUILD_CONFIGURATION_DEFAULT))
-					resource.setPersistentProperty(RESOURCE_TIED_TO_CONFIG_ID_KEY, null);
-				else {
-					resource.setPersistentProperty(RESOURCE_TIED_TO_CONFIG_ID_KEY, configID);
-					new ExeChangedListener().scheduleUpdate(new HashMap<IFile, String>(1){{put((IFile)resource, configID);}});
-				}
-			} catch (CoreException e) {
-				Activator.log(e);
+			final String configID = getConfigurationID();
+			if (configID.equals(BUILD_CONFIGURATION_DEFAULT))
+				DwarfSettingsProvider.setBinaryToConfigMapping(resource.getProject(), resource, (String)null);
+			else {
+				DwarfSettingsProvider.setBinaryToConfigMapping(resource.getProject(), resource, configID);
+				new ExeChangedListener().scheduleUpdate(new HashMap<IFile, String>(1){{put((IFile)resource, configID);}});
 			}
 		}
 		return super.performOk();

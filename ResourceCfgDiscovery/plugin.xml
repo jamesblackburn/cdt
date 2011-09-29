@@ -5,7 +5,7 @@
          point="org.eclipse.ui.propertyPages">
       <page
             class="ResourceCfgDiscovery.ui.BinaryFilePropertyPage"
-            id="broadcom.binaryFilePage"
+            id="resCfgDiscovery.binaryFilePage"
             name="Binary Project Configuration">
          <enabledWhen>
             <instanceof

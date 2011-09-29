@@ -1,21 +1,25 @@
 package ResourceCfgDiscovery.binaryInfo;
 
 import java.io.IOException;
+import java.lang.ref.Reference;
+import java.lang.ref.SoftReference;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.SortedMap;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
+import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.ISymbolReader;
 import org.eclipse.cdt.core.ISymbolReader.Include;
 import org.eclipse.cdt.core.ISymbolReader.Macro;
 import org.eclipse.cdt.core.ISymbolReader.Macro.TYPE;
 import org.eclipse.cdt.core.model.CoreModel;
+import org.eclipse.cdt.core.parser.IScannerInfo;
+import org.eclipse.cdt.core.parser.IScannerInfoProvider;
 import org.eclipse.cdt.core.settings.model.CIncludeFileEntry;
 import org.eclipse.cdt.core.settings.model.CIncludePathEntry;
 import org.eclipse.cdt.core.settings.model.CMacroEntry;
@@ -34,7 +38,6 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.runtime.Assert;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
@@ -44,86 +47,61 @@ import ResourceCfgDiscovery.Activator;
 /**
  * This class is used to set Includes and Macros on the specified Project Configuration
  * by loading them in from a specified binary
+ *
+ * FIXME JBB currently these settings are persisted on the build model.  This is currently
+ * not scalable.  What we do for the moment is not add entries that we can get from
+ * scanner discovery -- however in the future we should go further than this and simply
+ * not alter the build model at all, rather push this information in via scanner discovery
  */
 public class DwarfBasedSettingsProvider {
-	boolean CHECKS = true;
-	boolean DEBUG = true;
-	boolean VERBOSE = DEBUG && true;
-	boolean VVERBOSE = VERBOSE && false;
+	private static final boolean CHECKS = true;
+	private static final boolean Debug_DWARF_PROVIDER = true;
+	private static final boolean Debug_DWARF_PROVIDER_VERBOSE = true;
 
+	/** Language setting entries cache */
+	private static volatile Reference<Map<ICLanguageSettingEntry, ICLanguageSettingEntry>> langSettEntryCache = new SoftReference<Map<ICLanguageSettingEntry, ICLanguageSettingEntry>>(null);
+	/** Instance handle on the cache map */
+	private Map<ICLanguageSettingEntry,ICLanguageSettingEntry> allAttributes;
+
+	final IProject project;
+	final int kind;
 	final String cfgId;
 	final IFile binary;
-	
-	public DwarfBasedSettingsProvider(IFile binary, String cfgId) {
+
+	/**
+	 * Load settings for the particular {@link ICSettingEntry} kinds into the given
+	 * configuration id, in the project which contains the binary
+	 *
+	 * Currently only the following kinds are supported:
+	 * {@link ICSettingEntry#MACRO}
+	 * {@link ICSettingEntry#INCLUDE_PATH}
+	 * @param binary
+	 * @param cfgId
+	 * @param kind
+	 */
+	public DwarfBasedSettingsProvider(IFile binary, String cfgId, int kind) {
+		project = binary.getProject();
 		this.binary = binary;
 		this.cfgId = cfgId;
-	}
-
-	/**
-	 * This class acts as a placeholder in the tree to demarkate
-	 * each depth as we aggregate up the tree
-	 */
-	private class FixedDepthPathIndex extends Path {
-		public final int depth;
-		public FixedDepthPathIndex(int depth) {
-			super("");
-			this.depth = depth;
-		}
-		@Override
-		public int segmentCount() {
-			return depth;
-		}
-	}
-	/**
-	 * Comparator which sorts paths in ascending order starting from the root...
-	 */
-	private class ReverseSortedByDepthComparator extends SortedByDepthComparator {
-		@Override
-		public int compare(IPath o1, IPath o2) {
-			return -super.compare(o1, o2);
-		}
-	}
-	/**
-	 * This comparator sorts paths by depth such that all deepest paths
-	 *  occur before shallow paths
-	 * For paths of the same length, sorting is done
-	 *     /other/path/to/...
-	 *     /path/to/folder/file
-	 *     /path/to/file1
-	 *	   /path/to/file2
-	 *	   /path/to
-	 */
-	private class SortedByDepthComparator implements Comparator<IPath> {
-		public int compare(IPath o1, IPath o2) {
-			if (o1.segmentCount() < o2.segmentCount())
-				return +1;
-			else if (o1.segmentCount() > o2.segmentCount())
-				return -1;
-			//Path separators always come first
-			if (o1 instanceof FixedDepthPathIndex &&
-					!(o2 instanceof FixedDepthPathIndex))
-				return -1;
-			else if (o2 instanceof FixedDepthPathIndex &&
-					!(o1 instanceof FixedDepthPathIndex))
-				return 1;
-
-			String[] s1 = o1.segments();
-			String[] s2 = o2.segments();
-
-			for (int i = 0; i < s1.length; ++i) {
-				int comparison = s1[i].compareTo(s2[i]);
-				if (comparison != 0)
-					return comparison;
+		this.kind = kind;
+		// Initialise the setting entries cache
+		synchronized (DwarfBasedSettingsProvider.class) {
+			allAttributes = langSettEntryCache.get();
+			if (allAttributes == null) {
+				allAttributes = new ConcurrentHashMap<ICLanguageSettingEntry, ICLanguageSettingEntry>();
+				langSettEntryCache = new SoftReference<Map<ICLanguageSettingEntry,ICLanguageSettingEntry>>(allAttributes);
 			}
-			return 0;
 		}
 	}
 
 	/** Sorted Map containing the set of all macros discovered by compilation unit */
-	TreeMap<IPath, LinkedHashSet<Macro>> allMacrosMap = new TreeMap<IPath, LinkedHashSet<Macro>>(new SortedByDepthComparator());
+	TreeMap<IPath, LinkedHashSet<Macro>> allMacrosMap = new TreeMap<IPath, LinkedHashSet<Macro>>(new PathTreeUtils.DeepestFirstPathComparator());
 	/** Sorted Map containing the set of Includes discovered by compilation unit */
-	TreeMap<IPath, LinkedHashSet<Include>> allIncludesMap = new TreeMap<IPath, LinkedHashSet<Include>>(new SortedByDepthComparator());
+	TreeMap<IPath, LinkedHashSet<Include>> allIncludesMap = new TreeMap<IPath, LinkedHashSet<Include>>(new PathTreeUtils.DeepestFirstPathComparator());
 
+	/**
+	 * The main entrance point for updating the project configuration based on the settings discovered in the provided binary
+	 */
 	public void updateSettings() {
 		// Performance timing
 		long startTime = System.currentTimeMillis();
@@ -131,107 +109,35 @@ public class DwarfBasedSettingsProvider {
 		// populate allMacrosMap && allIncludesMap
 		getMacrosAndIncludes(binary);
 
-		if (!allMacrosMap.isEmpty()) {
-
-			// Create backup of the sets for sanity checking
-			TreeMap<IPath, LinkedHashSet<Macro>> sanityCheckMacroMap = new TreeMap<IPath, LinkedHashSet<Macro>>(new SortedByDepthComparator());
-			TreeMap<IPath, LinkedHashSet<Include>> sanityCheckIncludeMap = new TreeMap<IPath, LinkedHashSet<Include>>(new SortedByDepthComparator());
-			if (CHECKS) {
-				// Clone the members individually
-				for (Map.Entry<IPath, LinkedHashSet<Macro>> e : allMacrosMap.entrySet())
-					sanityCheckMacroMap.put(e.getKey(), (LinkedHashSet<Macro>)e.getValue().clone());
-				for (Map.Entry<IPath, LinkedHashSet<Include>> e : allIncludesMap.entrySet())
-					sanityCheckIncludeMap.put(e.getKey(), (LinkedHashSet<Include>)e.getValue().clone());
-			}
-
-			// The common set of Macros, propagate similar same macros up the tree:
-			condenseEntries(allMacrosMap);
-			// The common set of Includes, propagate Includes up the tree:
-			condenseEntries(allIncludesMap);
-
-			// Persist Macros and Includes to the project configuration
-			udpateProjectConfiguration(binary.getProject(), cfgId);
-
-			if (DEBUG)
-				System.out.println("Total Processing Time: " + (System.currentTimeMillis() - startTime) + "ms");
-			if (CHECKS) {
-				sanityCheck(sanityCheckMacroMap, allMacrosMap);
-				sanityCheck(sanityCheckIncludeMap, allIncludesMap);
-			}
-		}
-	}
-
-	/**
-	 * This method's job is to remove commonality between compilation units within the same subtree.
-	 * i.e. it pushes common .equal() attribute objects up the tree.
-	 *
-	 * It operates on the passed in map.
-	 *
-	 * To do this:
-	 *  - The Tree map is already ordered by strata (depth) (Using the SortedByDepthComparator...).
-	 *  - Elements in the tree, initially, represent compilation units.
-	 *  - We iterate over tree at deepest depth first (call it n), collecting all the common macros together,
-	 *    - We add the common macros to a new node representing the parent directory.
-	 *    - repeating for all the children of paths n-1
-	 *  - Add the n-1 directories to the map
-	 *  - Iterate from n-1 until we hit the root.
-	 */
-	private <T> void condenseEntries(TreeMap<IPath, LinkedHashSet<T>> pathSortedMap) {
-
-		// Create an index which demarkates the strata
-		IPath index = new FixedDepthPathIndex(pathSortedMap.firstKey().segmentCount());
-		pathSortedMap.put(index, new LinkedHashSet<T>());
-
-		// Attribute all common macros between files and directories at a current level to the parent container directory
-		while (index.segmentCount() > 0) {
-			// Create the next index
-			IPath nextIndex = new FixedDepthPathIndex(index.segmentCount()-1);
-			pathSortedMap.put(nextIndex, new LinkedHashSet<T>());
-			// Get a map of all entries at this depth
-			SortedMap<IPath, LinkedHashSet<T>> currentDepthEntries = pathSortedMap.subMap(index, nextIndex);
-			// Remove the lower bound index key
-			pathSortedMap.remove(index);
-			// Update index
-			index = nextIndex;
-
-			/** Temporary map for the parents */
-			TreeMap<IPath, LinkedHashSet<T>> parentMap = new TreeMap<IPath, LinkedHashSet<T>>(new SortedByDepthComparator());
-
-			// Find the common elements and add them to the parent directory
-			IPath currentParentDir = null;
-			LinkedHashSet<T> currenParentSet = null;
-			for (Map.Entry<IPath, LinkedHashSet<T>> e : currentDepthEntries.entrySet()) {
-				if (!e.getKey().removeLastSegments(1).equals(currentParentDir)) {
-					// Add the parent to the map
-					currentParentDir = e.getKey().removeLastSegments(1);
-					currenParentSet = (LinkedHashSet<T>)e.getValue().clone();
-					parentMap.put(currentParentDir, currenParentSet);
-				}
-				currenParentSet.retainAll(e.getValue());
-			}
-			// Iterate again through the children removing the common elements
-			for (Map.Entry<IPath, LinkedHashSet<T>> e : currentDepthEntries.entrySet())
-				e.getValue().removeAll(parentMap.get(e.getKey().removeLastSegments(1)));
-			// Add all the parents to the allMacrosMap
-			pathSortedMap.putAll(parentMap);
+		// Create backup of the sets for sanity checking
+		TreeMap<IPath, LinkedHashSet<Macro>> sanityCheckMacroMap = new TreeMap<IPath, LinkedHashSet<Macro>>(new PathTreeUtils.DeepestFirstPathComparator());
+		TreeMap<IPath, LinkedHashSet<Include>> sanityCheckIncludeMap = new TreeMap<IPath, LinkedHashSet<Include>>(new PathTreeUtils.DeepestFirstPathComparator());
+		if (CHECKS) {
+			// Clone the members individually
+			for (Map.Entry<IPath, LinkedHashSet<Macro>> e : allMacrosMap.entrySet())
+				sanityCheckMacroMap.put(e.getKey(), (LinkedHashSet<Macro>)e.getValue().clone());
+			for (Map.Entry<IPath, LinkedHashSet<Include>> e : allIncludesMap.entrySet())
+				sanityCheckIncludeMap.put(e.getKey(), (LinkedHashSet<Include>)e.getValue().clone());
 		}
 
-		// Remove all the CUs with no attributes
-		Iterator<SortedMap.Entry<IPath, LinkedHashSet<T>>> it = pathSortedMap.entrySet().iterator();
-		while (it.hasNext()) {
-			Map.Entry<IPath, LinkedHashSet<T>> e = it.next();
-			if (e.getValue().isEmpty())
-				it.remove();
-		}
+		// FIXME JBB
+		//  No point in propogating common elements upwards here, as the
+		//  current storage mechanism in CDT simply undoes this
+		//  as all parent ICResourceDescription language settings entries
+		//  are copied to the child when the child resource description is created...
+		// The common set of Macros, propagate similar same macros up the tree:
+//		PathTreeUtils.propogateUpwards(allMacrosMap);
+//		// The common set of Includes, propagate Includes up the tree:
+//		PathTreeUtils.propogateUpwards(allIncludesMap);
 
-		if (DEBUG) {
-			if (VERBOSE)
-				for (Map.Entry<IPath, LinkedHashSet<T>> e  : pathSortedMap.entrySet()) {
-					Assert.isTrue(!(e.getKey() instanceof FixedDepthPathIndex));
-					System.out.println(e.getKey());
-					for (Object o : e.getValue())
-						System.out.println(" " + o.toString());
-				}
+		// Persist Macros and Includes to the project configuration
+		udpateProjectConfiguration(binary.getProject(), cfgId);
+
+		if (Debug_DWARF_PROVIDER)
+			System.out.println("Total Processing Time: " + (System.currentTimeMillis() - startTime) + "ms");
+		if (CHECKS) {
+			sanityCheck(sanityCheckMacroMap, allMacrosMap);
+			sanityCheck(sanityCheckIncludeMap, allIncludesMap);
 		}
 	}
 
@@ -247,39 +153,43 @@ public class DwarfBasedSettingsProvider {
 			if (reader != null) {
 				long time = System.currentTimeMillis();
 
-				// Fetch the externally defined macors
-				Map<String, LinkedHashSet<Macro>> macros = reader.getExternallyDefinedMacros();
-				if (DEBUG) {
-					System.out.println("Fetching Macros for " + bin.getName() + " took " + (System.currentTimeMillis() - time) + "ms");
-					time = System.currentTimeMillis();
+				if ((kind & ICSettingEntry.MACRO) != 0) {
+					// Fetch the externally defined macors
+					Map<String, LinkedHashSet<Macro>> macros = reader.getExternallyDefinedMacros();
+					if (Debug_DWARF_PROVIDER) {
+						System.out.println("Fetching Macros for " + bin.getName() + " took " + (System.currentTimeMillis() - time) + "ms");
+						time = System.currentTimeMillis();
+					}
+
+					// Add the macros/files to the macro map, resolving them first
+					for (Map.Entry<String, LinkedHashSet<Macro>> e : macros.entrySet()) {
+						IPath filePath = resolveInProject(bin.getProject(), e.getKey());
+						if (filePath != null)
+							allMacrosMap.put(filePath, e.getValue());
+					}
 				}
 
-				// Fetch the Includes -- should be much faster
-				Map<String, LinkedHashSet<Include>> includes = reader.getIncludesPerSourceFile();
-				if (DEBUG) {
-					System.out.println("Fetching Includes for " + bin.getName() + " took " + (System.currentTimeMillis() - time) + "ms");
-					time = System.currentTimeMillis();
+				if ((kind & ICSettingEntry.INCLUDE_PATH) != 0) {
+					// Fetch the Includes -- should be much faster
+					Map<String, LinkedHashSet<Include>> includes = reader.getIncludesPerSourceFile();
+					if (Debug_DWARF_PROVIDER) {
+						System.out.println("Fetching Includes for " + bin.getName() + " took " + (System.currentTimeMillis() - time) + "ms");
+						time = System.currentTimeMillis();
+					}
+
+					// Add the includes to the includes map, resolving paths first
+					for (Map.Entry<String, LinkedHashSet<Include>> e : includes.entrySet()) {
+						IPath incPath = resolveInProject(bin.getProject(), e.getKey());
+						if (incPath != null)
+							allIncludesMap.put(incPath, e.getValue());
+					}
 				}
 
-				// Add the macros/files to the macro map, resolving them first
-				for (Map.Entry<String, LinkedHashSet<Macro>> e : macros.entrySet()) {
-					IPath filePath = resolveInProject(bin.getProject(), e.getKey());
-					if (filePath != null)
-						allMacrosMap.put(filePath, e.getValue());
-				}
-
-				// Add the includes to the includes map, resolving paths first
-				for (Map.Entry<String, LinkedHashSet<Include>> e : includes.entrySet()) {
-					IPath incPath = resolveInProject(bin.getProject(), e.getKey());
-					if (incPath != null)
-						allIncludesMap.put(incPath, e.getValue());
-				}
-
-				if (DEBUG) {
+				if (Debug_DWARF_PROVIDER) {
 					System.out.println("Adding Includes and Macros to map: " + (System.currentTimeMillis() - time) + "ms");
 					System.out.println(allMacrosMap.size() + " compilation units with macros found");
 					System.out.println(allIncludesMap.size() + " compilation units with includes found");
-					if (VVERBOSE) // Print the compilation units found
+					if (Debug_DWARF_PROVIDER_VERBOSE) // Print the compilation units found
 						for (Map.Entry<IPath, LinkedHashSet<Macro>> e  : allMacrosMap.entrySet()) {
 							System.out.println(e.getKey());
 						}
@@ -293,11 +203,12 @@ public class DwarfBasedSettingsProvider {
 
 	private void udpateProjectConfiguration(IProject project, String cfgId) {
 		try {
+
 			// Nuke the configuration then recreate it.  Otherwise system will grind to a halt...
 			// NB any changes the user has made _will_ be lost
 			long persistToProjectTime = System.currentTimeMillis();
 //			purgeDescriptions(project, cfgId);
-			if (DEBUG) {
+			if (Debug_DWARF_PROVIDER) {
 				System.out.println("Time taken to Purge Configuration: " + cfgId + " was " + (System.currentTimeMillis()- persistToProjectTime) + "ms");
 				persistToProjectTime = System.currentTimeMillis();
 			}
@@ -306,42 +217,31 @@ public class DwarfBasedSettingsProvider {
 			ICConfigurationDescription cfgDesc = CoreModel.getDefault().getProjectDescription(project).getConfigurationById(cfgId);
 			// Because of BUG 236279, child attributes are not necessarily inherited properly from the parent
 			// First combine all the attributes into a single Map.
-			Map combinedAttributes = combine(allMacrosMap, allIncludesMap);
+			Map combinedAttributes = PathTreeUtils.combine(allMacrosMap, allIncludesMap);
 			updateResourceConfigurations(project, cfgDesc, combinedAttributes);
-			if (DEBUG) {
+			if (Debug_DWARF_PROVIDER) {
 				System.out.println("Time taken to Update Resource Configs for: " + cfgId + " was " + (System.currentTimeMillis()- persistToProjectTime) + "ms");
 				persistToProjectTime = System.currentTimeMillis();
 			}
 
+			// Update the source and output paths
+			updateSourceOutputPaths(cfgDesc);
+
 			// Store the settings
 			CoreModel.getDefault().setProjectDescription(project, cfgDesc.getProjectDescription());
-			if (DEBUG) {
+			if (Debug_DWARF_PROVIDER) {
 				System.out.println("Time taken to setProjectDescription for: " + cfgId + " was " + (System.currentTimeMillis()- persistToProjectTime) + "ms");
 			}
 		} catch (CoreException e) {
-			ResourceCfgDiscovery.Activator.log(e);
+			Activator.log(e);
 		}
 	}
 
 	/**
-	 * Returns a sorted Map with parent paths first
-	 * The Sorted set contains the unified set of attributes on the Path
-	 * @param maps
-	 * @return
+	 * Hook to allow update the source and output paths on the given configuration
 	 */
-	private Map<IPath, LinkedHashSet> combine (TreeMap... maps) {
-		// Ensure that this set is sorted from the root elements going down
-		Map<IPath, LinkedHashSet> result = new TreeMap<IPath, LinkedHashSet>(new ReverseSortedByDepthComparator());
-		if (maps.length == 0)
-			return result;
-		for (Map<IPath, LinkedHashSet> m : maps) {
-			for (Map.Entry<IPath, LinkedHashSet> e : m.entrySet()) {
-				if (!result.containsKey(e.getKey()))
-					result.put(e.getKey(), new LinkedHashSet());
-				result.get(e.getKey()).addAll(e.getValue());
-			}
-		}
-		return result;
+	protected void updateSourceOutputPaths(ICConfigurationDescription cfgDesc) {
+
 	}
 
 	/**
@@ -372,23 +272,8 @@ public class DwarfBasedSettingsProvider {
 	 */
 	protected void updateResourceConfigurations(IProject project, ICConfigurationDescription cfgDesc/*String cfgID*/, Map<IPath, LinkedHashSet> pathToDebugObjSet)
 	throws CoreException {
-//		long setProjDescriptionDelta = 0;
-//		// Iterate over all the paths
-//		int lastSegmentCount = 0;
-//		ICConfigurationDescription cfgDesc = CoreModel.getDefault().getProjectDescription(project).getConfigurationById(cfgID);
 		int resourceConfigCount = 0;
 		for (Map.Entry<IPath, LinkedHashSet> e : pathToDebugObjSet.entrySet()) {
-
-//			// Store the Project Description at each stage here, as otherwise Includes are not pushed down correctly,
-//			// see ... Also get the configuration afresh from the DescriptionManager or we end up with a nasty memory leak
-//			if (e.getKey().segmentCount() != lastSegmentCount) {
-//			lastSegmentCount = e.getKey().segmentCount();
-//			long time = System.currentTimeMillis();
-//			CoreModel.getDefault().setProjectDescription(project, cfgDesc.getProjectDescription());
-//			cfgDesc = CoreModel.getDefault().getProjectDescription(project).getConfigurationById(cfgID);
-//			setProjDescriptionDelta += System.currentTimeMillis() - time;
-//			}
-
 			// All extenders to specify a set of paths they want to be annotated with these attributes
 			for (IPath path : getRelevantPaths(project, e.getKey())) {
 				++resourceConfigCount;
@@ -402,11 +287,7 @@ public class DwarfBasedSettingsProvider {
 
 					// Find parent ICResourceDescription
 					IPath parentPath = path.removeLastSegments(1);
-					ICResourceDescription parentDesc = cfgDesc.getResourceDescription(parentPath, true);
-					while (parentPath.segmentCount() > 0 && parentDesc == null) {
-						parentPath = parentPath.removeLastSegments(1);
-						parentDesc = cfgDesc.getResourceDescription(parentPath, true);
-					}
+					ICResourceDescription parentDesc = cfgDesc.getResourceDescription(parentPath, false);
 
 					// Create the resource configuration for the file / directory based on the parent
 					switch (project.findMember(path).getType()) {
@@ -422,63 +303,76 @@ public class DwarfBasedSettingsProvider {
 					}
 				}
 				// Convert Macros/Includes attributes to Settings entries
-				List<ICLanguageSettingEntry> newSettings = dwarfObjToSettingEntrys(e.getKey(), e.getValue());
-				if (resDesc instanceof ICFileDescription) {
-					List<ICLanguageSettingEntry> macroSettings = ((ICFileDescription)resDesc).getLanguageSetting().getSettingEntriesList(ICSettingEntry.MACRO);
-					List<ICLanguageSettingEntry> includePathSettings = ((ICFileDescription)resDesc).getLanguageSetting().getSettingEntriesList(ICSettingEntry.INCLUDE_PATH);
-					List<ICLanguageSettingEntry> includeFileSettings = ((ICFileDescription)resDesc).getLanguageSetting().getSettingEntriesList(ICSettingEntry.INCLUDE_FILE);
-					for (ICLanguageSettingEntry lse : newSettings) {
-						switch (lse.getKind()) {
-						case ICSettingEntry.INCLUDE_FILE:
-							includeFileSettings.add(lse);
-							break;
-						case ICSettingEntry.INCLUDE_PATH:
-							includePathSettings.add(lse);
-							break;
-						case ICSettingEntry.MACRO:
-							macroSettings.add(lse);
-							break;
-						}
-					}
-					((ICFileDescription)resDesc).getLanguageSetting().setSettingEntries(ICSettingEntry.MACRO, macroSettings);
-					((ICFileDescription)resDesc).getLanguageSetting().setSettingEntries(ICSettingEntry.INCLUDE_PATH, includePathSettings);
-					((ICFileDescription)resDesc).getLanguageSetting().setSettingEntries(ICSettingEntry.INCLUDE_FILE, includeFileSettings);
-				} else if (resDesc instanceof ICFolderDescription) {
+				LinkedHashSet<ICLanguageSettingEntry> newSettings = dwarfObjToSettingEntrys(e.getKey(), e.getValue());
+
+				List<ICLanguageSetting> langs = new ArrayList<ICLanguageSetting>(3);
+				if (resDesc instanceof ICFileDescription)
+					langs.add(((ICFileDescription)resDesc).getLanguageSetting());
+				else {
 					for (ICLanguageSetting lang : ((ICFolderDescription)resDesc).getLanguageSettings()) {
-						List<ICLanguageSettingEntry> macroSettings = lang.getSettingEntriesList(ICSettingEntry.MACRO);
-						List<ICLanguageSettingEntry> includePathSettings = lang.getSettingEntriesList(ICSettingEntry.INCLUDE_PATH);
-						List<ICLanguageSettingEntry> includeFileSettings = lang.getSettingEntriesList(ICSettingEntry.INCLUDE_FILE);
-						for (ICLanguageSettingEntry lse : newSettings) {
-							switch (lse.getKind()) {
-							case ICSettingEntry.INCLUDE_FILE:
-								includeFileSettings.add(lse);
-								break;
-							case ICSettingEntry.INCLUDE_PATH:
-								includePathSettings.add(lse);
-								break;
-							case ICSettingEntry.MACRO:
-								macroSettings.add(lse);
-								break;
-							}
-						}
-						lang.setSettingEntries(ICSettingEntry.MACRO, macroSettings);
-						lang.setSettingEntries(ICSettingEntry.INCLUDE_PATH, includePathSettings);
-						lang.setSettingEntries(ICSettingEntry.INCLUDE_FILE, includeFileSettings);
+						if (lang.supportsEntryKind(kind))
+							langs.add(lang);
 					}
-				} else
-					reportError(e.getValue() + " doesn't have folder or file resource desc in root, found: " + resDesc);
+				}
+
+				for (ICLanguageSetting lang : langs) {
+					if ((kind & ICSettingEntry.INCLUDE_PATH) != 0) {
+						newSettings.addAll(lang.getSettingEntriesList(ICSettingEntry.INCLUDE_PATH));
+						removeScannerDiscoveryProvidedInfo(newSettings);
+						lang.setSettingEntries(ICSettingEntry.INCLUDE_PATH, newSettings.toArray(new ICLanguageSettingEntry[newSettings.size()]));
+					}
+					if ((kind & ICSettingEntry.MACRO) != 0) {
+						newSettings.addAll(lang.getSettingEntriesList(ICSettingEntry.MACRO));
+						removeScannerDiscoveryProvidedInfo(newSettings);
+						lang.setSettingEntries(ICSettingEntry.MACRO, newSettings.toArray(new ICLanguageSettingEntry[newSettings.size()]));
+					}
+				}
 			}
 		}
-		if (DEBUG) {
+		if (Debug_DWARF_PROVIDER) {
 			System.out.println("Number of resource configs set on: " + cfgDesc.getId() + " was " + resourceConfigCount);
 		}
-//		long time = System.currentTimeMillis();
-//		// Persist the final config change
-//		CoreModel.getDefault().setProjectDescription(project, cfgDesc.getProjectDescription());
-//		setProjDescriptionDelta += System.currentTimeMillis() - time;
-//		if (DEBUG) {
-//		System.out.println("Time taken setProjectDescription() for: " + cfgID + " was " + setProjDescriptionDelta + "ms");
-//		}
+	}
+
+	/**
+	 * Helper function to remove built-in entries that are available from the compiler
+	 * provided scanner info.  This is to aid in reducing the amount of data we request be stored in the project
+	 * model.
+	 * The passed in hash set is modified in place.
+	 * 
+	 * Note that we're not fetching the build configuration specific scanner discovered info here
+	 * as, for all we know, that may not have been intialised yet.  Fruthermore we're fetching
+	 * per project info because we're really only trying to remove the common macros that exist
+	 * from the compiler -- it's expected this set of macros won't change greatly from release
+	 * to release.
+	 */
+	private void removeScannerDiscoveryProvidedInfo(LinkedHashSet<ICLanguageSettingEntry> settings) {
+		IScannerInfoProvider sip = CCorePlugin.getDefault().getScannerInfoProvider(project);
+		if (sip == null)
+			return;
+		IScannerInfo prjInfo = sip.getScannerInformation(project);
+		if (prjInfo == null)
+			return;
+		Set<ICLanguageSettingEntry> definedSyms = convertScannerInfoDefinesToLanguageSettings(prjInfo.getDefinedSymbols());
+		Set<ICLanguageSettingEntry> includePaths = convertScannerInfoIncludesToLanguageSettings(prjInfo.getIncludePaths());
+		settings.removeAll(definedSyms);
+		settings.removeAll(includePaths);
+	}
+
+	private Set<ICLanguageSettingEntry> convertScannerInfoDefinesToLanguageSettings(Map<String,String> defines) {
+		HashSet<ICLanguageSettingEntry> set = new HashSet<ICLanguageSettingEntry>(defines.size());
+		for (Map.Entry<String,String> e : defines.entrySet()) {
+			ICLanguageSettingEntry lse = new CMacroEntry(e.getKey(), e.getValue(), 0);
+			set.add(internEntry(lse));
+		}
+		return set;
+	}
+	private Set<ICLanguageSettingEntry> convertScannerInfoIncludesToLanguageSettings(String[] includes) {
+		HashSet<ICLanguageSettingEntry> set = new HashSet<ICLanguageSettingEntry>(includes.length);
+		for (String inc : includes) {
+			set.add(internEntry(new CIncludePathEntry(inc, 0)));
+		}
+		return set;
 	}
 
 	/**
@@ -495,14 +389,13 @@ public class DwarfBasedSettingsProvider {
 	}
 
 
-	private Map<ICLanguageSettingEntry,ICLanguageSettingEntry> allAttributes = new HashMap<ICLanguageSettingEntry,ICLanguageSettingEntry>();
 	/**
 	 * Converts a set of ISymbolReaderObjects into an ICLanguageSettingEntry List
 	 * @param symObjects Set of ISymbolReader.Include && ISymbolReader.Macro
 	 * @return List of ICLanguageSettingEntry List
 	 */
-	private List<ICLanguageSettingEntry> dwarfObjToSettingEntrys(IPath resPath, LinkedHashSet<?> symObjects) {
-		List<ICLanguageSettingEntry> ls = new ArrayList<ICLanguageSettingEntry>();
+	private LinkedHashSet<ICLanguageSettingEntry> dwarfObjToSettingEntrys(IPath resPath, LinkedHashSet<?> symObjects) {
+		LinkedHashSet<ICLanguageSettingEntry> ls = new LinkedHashSet<ICLanguageSettingEntry>();
 		if (symObjects.isEmpty())
 			return ls;
 
@@ -536,21 +429,30 @@ public class DwarfBasedSettingsProvider {
 					lse = new CIncludeFileEntry(path, flags);
 				}
 			}
-			if (lse != null) {
-				// Save memory, use the same ICLanguageSettingEntry
-				if (!allAttributes.containsKey(lse))
-					allAttributes.put(lse, lse);
-				ls.add(allAttributes.get(lse));
-			}
+			if (lse != null)
+				ls.add(internEntry(lse));
 		}
 		return ls;
 	}
 
 	/**
+	 * Intern a language setting entry so they are shared for multiple files
+	 * @param entry
+	 * @return
+	 */
+	private ICLanguageSettingEntry internEntry(ICLanguageSettingEntry entry) {
+		if (!allAttributes.containsKey(entry))
+			allAttributes.put(entry, entry);
+		return allAttributes.get(entry);
+	}
+
+	/**
 	 * Resolves the path in the given project. Returns null otherwise
 	 * @param project
-	 * @param path
-	 * @return
+	 * @param cuPath Path of the compilation unit from which this path was taken (for relative paths)
+	 * @param pathToResolve The path to locate in the project
+	 * @return IPath of the resolve original source path
+	 * FIXME JBB can we replace this with ResourceLookup?
 	 */
 	protected IPath resolveInProject(IProject project, String path) {
 		IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
@@ -585,6 +487,7 @@ public class DwarfBasedSettingsProvider {
 	 * Attempts to resolve the path in the workspace, otherwise returns null
 	 * @param path
 	 * @return workspace relative IPath
+ 	 * FIXME JBB can we replace this with ResourceLookup?
 	 */
 	private IPath resolveInWorkspace(IPath path) {
 		IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
@@ -627,7 +530,7 @@ public class DwarfBasedSettingsProvider {
 			if (!newMacSet.equals(original.get(e.getKey()))) {
 				StringBuilder sb = new StringBuilder();
 				sb.append("Discrepancy: ").append(e.getKey()).append("\n");
-				LinkedHashSet<T> orig = (LinkedHashSet<T>)e.getValue().clone();
+				LinkedHashSet<T> orig = new LinkedHashSet<T>(e.getValue());
 				orig.removeAll(newMacSet);
 				sb.append("Missing: ");
 				for (T m : orig)
@@ -639,19 +542,19 @@ public class DwarfBasedSettingsProvider {
 				sb.append("\n");
 
 				reportError(sb.toString());
-			} else if (VVERBOSE)
+			} else if (Debug_DWARF_PROVIDER_VERBOSE)
 				System.out.println("OK: " + e.getKey());
 		}
 	}
 
 	protected void reportError(String error) {
 		Activator.log("Dwarf Settings Provider Error: " + error);
-		if (DEBUG)
+		if (Debug_DWARF_PROVIDER)
 			System.out.println("Dwarf Settings Provider Error: " + error);
 	}
 	protected void reportInfo(String error) {
 		Activator.info("Dwarf Settings Provider Info: " + error);
-		if (DEBUG)
+		if (Debug_DWARF_PROVIDER)
 			System.out.println("Dwarf Settings Provider Error: " + error);
 	}
 
