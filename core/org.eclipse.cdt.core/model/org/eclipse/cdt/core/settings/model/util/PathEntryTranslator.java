@@ -46,6 +46,7 @@ import org.eclipse.cdt.core.settings.model.CLibraryFileEntry;
 import org.eclipse.cdt.core.settings.model.CMacroEntry;
 import org.eclipse.cdt.core.settings.model.CMacroFileEntry;
 import org.eclipse.cdt.core.settings.model.COutputEntry;
+import org.eclipse.cdt.core.settings.model.CReferenceEntry;
 import org.eclipse.cdt.core.settings.model.CSourceEntry;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICExclusionPatternPathEntry;
@@ -53,6 +54,7 @@ import org.eclipse.cdt.core.settings.model.ICExternalSetting;
 import org.eclipse.cdt.core.settings.model.ICIncludePathEntry;
 import org.eclipse.cdt.core.settings.model.ICLanguageSettingEntry;
 import org.eclipse.cdt.core.settings.model.ICOutputEntry;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICSettingBase;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
 import org.eclipse.cdt.core.settings.model.ICSourceEntry;
@@ -148,12 +150,12 @@ public class PathEntryTranslator {
 
 		public ReferenceSettingsInfo(ICConfigurationDescription des) {
 			fExtSettings = des.getExternalSettings();
-			Map<String, String> map = des.getReferenceInfo();
-			fRefProjPaths = new IPath[map.size()];
-			int num = 0;
-			for (String proj : map.keySet()) {
-				fRefProjPaths[num++] = new Path(proj).makeAbsolute();
-			}
+			ICReferenceEntry[] refs = des.getReferenceEntries();
+			Set<IPath> projectPaths = new HashSet<IPath>();
+			for (ICReferenceEntry ref : refs)
+				projectPaths.add(new Path(ref.getProject()).makeAbsolute());
+			fRefProjPaths = new IPath[projectPaths.size()];
+			projectPaths.toArray(fRefProjPaths);
 		}
 
 		public ReferenceSettingsInfo(IPath[] projPaths, ICExternalSetting extSettings[]) {
@@ -178,6 +180,18 @@ public class PathEntryTranslator {
 				return map;
 			}
 			return new HashMap<String, String>(0);
+		}
+
+		/** @since 5.3 */
+		public ICReferenceEntry[] getProjectReferences() {
+			if (fRefProjPaths != null && fRefProjPaths.length != 0) {
+				ICReferenceEntry[] refs = new ICReferenceEntry[fRefProjPaths.length];
+				for (int i = 0; i < fRefProjPaths.length; i++) {
+					refs[i] = new CReferenceEntry(fRefProjPaths[i].segment(0), ""); //$NON-NLS-1$
+				}
+				return refs;
+			}
+			return new ICReferenceEntry[0];
 		}
 
 		public ICExternalSetting[] getExternalSettings() {
@@ -266,7 +280,7 @@ public class PathEntryTranslator {
 		}
 	}
 
-	private class RcDesInfo {
+	private static class RcDesInfo {
 		List<ResolvedEntry> fResolvedEntries;
 		KindBasedStore<List<LangEntryInfo>> fLangEntries;
 
@@ -384,7 +398,7 @@ public class PathEntryTranslator {
 		return null;
 	}
 
-	private class ResourceInfo {
+	private static class ResourceInfo {
 		IResource fRc;
 		boolean fExists;
 

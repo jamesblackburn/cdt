@@ -38,6 +38,7 @@ import org.eclipse.cdt.core.settings.model.ICFolderDescription;
 import org.eclipse.cdt.core.settings.model.ICLanguageSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionPreferences;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICSettingContainer;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
@@ -647,6 +648,7 @@ class MockConfig implements ICConfigurationDescription {
 	public ICFolderDescription getRootFolderDescription() {return null;}
 	public Object getSessionProperty(QualifiedName name) {return null;}
 	public ICSourceEntry[] getSourceEntries() {return null;}
+	public ICReferenceEntry[] getReferenceEntries() {return null;}
 	public ICTargetPlatformSetting getTargetPlatformSetting() {return null;}
 	public boolean isActive() {return false;}
 	public boolean isModified() {return false;}
@@ -664,8 +666,8 @@ class MockConfig implements ICConfigurationDescription {
 	public void setName(String name) throws WriteAccessException {}
 	public void setReferenceInfo(Map<String, String> refs) throws WriteAccessException {}
 	public void setSessionProperty(QualifiedName name, Object value) {}
-	public void setSourceEntries(ICSourceEntry[] entries) throws CoreException,
-	WriteAccessException {}
+	public void setSourceEntries(ICSourceEntry[] entries) throws CoreException, WriteAccessException {}
+	public void setReferenceEntries(ICReferenceEntry[] entries) throws CoreException, WriteAccessException {}
 	public ICSettingObject[] getChildSettings() {return null;}
 	public ICConfigurationDescription getConfiguration() {return null;}
 	public String getName() {return null;}

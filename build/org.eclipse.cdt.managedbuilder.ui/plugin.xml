@@ -291,7 +291,7 @@
            helpId="cdt_u_prop_pns_libpath"
            parent="org.eclipse.cdt.managedbuilder.ui.properties.Page_PathAndSymb"/>
      <tab
-           class="org.eclipse.cdt.ui.newui.RefsTab"
+           class="org.eclipse.cdt.internal.ui.newui.RefsTab"
            icon="icons/obj16/search_ref_obj.gif"
            name="%References"
            weight="100"

@@ -23,6 +23,9 @@ import org.eclipse.core.runtime.QualifiedName;
 /**
  * This is the element representing configuration and thus this is the root element
  * for configuration-specific settings
+ * 
+ * @noextend This interface is not intended to be extended by clients.
+ * @noimplement This interface is not intended to be implemented by clients.
  */
 public interface ICConfigurationDescription extends ICSettingContainer, ICSettingObject, ICSettingsStorage {
 	/**
@@ -211,31 +214,83 @@ public interface ICConfigurationDescription extends ICSettingContainer, ICSettin
 	 * <p>
 	 * If the current configuration does not reference any other configurations,
 	 * an empty map is returned.
+	 * <p>
+	 * This method will fail to return all of a configurations references if there is more than
+	 * one reference to a different configurations in the same project. Such a situation can only
+	 * arise by mixing use of {@link #getReferenceInfo()} and {@link #setReferenceInfo(Map)} with
+	 * {@link #getReferenceEntries()} and {@link #setReferenceEntries(ICReferenceEntry[])}.
+	 * When multiple references like this are required, {@link #getReferenceEntries()} and
+	 * {@link #setReferenceEntries(ICReferenceEntry[])} should be used.
 	 *
 	 * @return Map<String,String> of referenced Project -> Configuration ID
-  	 * @see {@link #setReferenceInfo(Map)} <br/>
- 	 * {@link #getExternalSettings()}<br/>
- 	 * {@link #createExternalSetting(String[], String[], String[], ICSettingEntry[])}
+	 * @see {@link #setReferenceInfo(Map)} <br/>
+	 * {@link #getExternalSettings()}<br/>
+	 * {@link #createExternalSetting(String[], String[], String[], ICSettingEntry[])}
+	 * {@link #getReferenceEntries()}
+	 * @deprecated as this may not return all of a configurations references. Use
+	 * {@link #getReferenceEntries()} instead.
 	 */
+	@Deprecated
 	Map<String, String> getReferenceInfo();
 
 	/**
-	 * Sets the reference information for this configuration.  This configuration
+	 * Sets the reference information for this configuration. This configuration
 	 * will pick up settings exported by referenced configurations.
 	 * <p>
 	 * This reference information is a map from project name to configuration ID
 	 * within the referenced project.
 	 * The empty string is a special configuration value which indicates the reference
 	 * tracks the Active configuration in the referenced Project.
+	 * <p>
+	 * This can only set references to one configuration in a project. If more are
+	 * needed {@link #setReferenceEntries(ICReferenceEntry[])} and
+	 * {@link #getReferenceEntries()} should be used instead.
 	 *
 	 * @param refs Map of project name -> configuration ID of referenced configurations
 	 * @throws WriteAccessException when the configuration description is read-only
-	 * see {@link CoreModel#getProjectDescription(org.eclipse.core.resources.IProject, boolean)}
+	 * @see {@link CoreModel#getProjectDescription(org.eclipse.core.resources.IProject, boolean)}
  	 * @see {@link #getReferenceInfo()} <br/>
- 	 * {@link #getExternalSettings()}<br/>
- 	 * {@link #createExternalSetting(String[], String[], String[], ICSettingEntry[])}
+	 * {@link #getExternalSettings()}<br/>
+	 * {@link #createExternalSetting(String[], String[], String[], ICSettingEntry[])}
+	 * {@link #setReferenceEntries(ICReferenceEntry[])}
+	 * @deprecated as this can only set references to one configuration in a project. Use
+	 * {@link #setReferenceEntries(ICReferenceEntry[])} instead.
 	 */
+	@Deprecated
 	void setReferenceInfo(Map<String, String> refs) throws WriteAccessException;
+
+	/**
+	 * Returns an array of references to configurations for this configuration.
+	 * Settings exported by a project configuration are automatically picked up by any referencing
+	 * configurations.
+	 * <p>
+	 * This reference information is an array of reference objects storing a unique identifier
+	 * for the referent configuration and properties of the reference.
+	 * <p>
+	 * If the current configuration does not reference any other configurations,
+	 * an empty array is returned.
+	 *
+	 * @since 5.3
+	 * @return Array of references to configurations; never null.
+	 * @see {@link #setReferenceEntries(ICReferenceEntry[])}
+	 * @see {@link #getReferenceInfo()}
+	 */
+	ICReferenceEntry[] getReferenceEntries();
+
+	/**
+	 * Sets the configuration references for this configuration. This configuration
+	 * will pick up settings exported by the referenced configurations.
+	 * <p>
+	 * This reference information is an array of reference objects storing a unique identifier
+	 * for the referent configuration and properties of the reference.
+	 *
+	 * @since 5.3
+	 * @param refs An array of configuration references
+	 * @throws WriteAccessException when the configuration description is read-only
+	 * @see {@link #getReferenceEntries()}
+	 * @see {@link #setReferenceInfo(Map)}
+	 */
+	void setReferenceEntries(ICReferenceEntry[] entries) throws CoreException, WriteAccessException;
 
 	/**
 	 * Returns an array of settings exported by this configuration

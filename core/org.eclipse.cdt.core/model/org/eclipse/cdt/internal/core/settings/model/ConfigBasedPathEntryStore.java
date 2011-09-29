@@ -14,7 +14,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.ICExtensionReference;
@@ -31,6 +30,7 @@ import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICExternalSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionListener;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.extension.CConfigurationData;
 import org.eclipse.cdt.core.settings.model.util.PathEntryTranslator;
 import org.eclipse.cdt.core.settings.model.util.PathEntryTranslator.PathEntryCollector;
@@ -147,8 +147,8 @@ public class ConfigBasedPathEntryStore implements IPathEntryStore, ICProjectDesc
 							setting.getCompatibleExtensions(),
 							setting.getEntries());
 				}
-				Map<String, String> refMap = rInfo.getRefProjectsMap();
-				cfgDes.setReferenceInfo(refMap);
+				ICReferenceEntry[] refs = rInfo.getProjectReferences();
+				cfgDes.setReferenceEntries(refs);
 
 				CoreModel.getDefault().setProjectDescription(fProject, des);
 			}

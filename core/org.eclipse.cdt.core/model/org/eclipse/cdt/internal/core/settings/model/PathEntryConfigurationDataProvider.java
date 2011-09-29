@@ -7,6 +7,7 @@
  *
  * Contributors:
  * Intel Corporation - Initial API and implementation
+ * Alex Collins (Broadcom Corporation) - Multiple references per project aren't supported (bug 317229)
  *******************************************************************************/
 package org.eclipse.cdt.internal.core.settings.model;
 

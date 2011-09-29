@@ -8,11 +8,14 @@
  * Contributors:
  * Andrew Ferguson (Symbian) - Initial implementation
  * James Blackburn (Broadcom Corp.)
+ * Alex Collins (Broadcom Corporation) - Multiple references per project aren't supported (bug 317229)
  *******************************************************************************/
 package org.eclipse.cdt.core.settings.model;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +29,9 @@ import org.eclipse.cdt.core.model.ICProject;
 import org.eclipse.cdt.core.settings.model.extension.impl.CDefaultConfigurationData;
 import org.eclipse.cdt.core.testplugin.CProjectHelper;
 import org.eclipse.cdt.core.testplugin.util.BaseTestCase;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IWorkspaceRoot;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.CoreException;
 
 
@@ -89,17 +95,17 @@ public class CConfigurationDescriptionReferenceTests extends BaseTestCase {
 		 * p4: cd1 cd2 cd3
 		 */
 		
-		setRefs(p1cd1, new ICConfigurationDescription[] {p2cd3});
-		setRefs(p1cd2, new ICConfigurationDescription[] {p2cd2});
-		setRefs(p1cd3, new ICConfigurationDescription[] {p2cd1});
+		setRefInfo(p1cd1, new ICConfigurationDescription[] {p2cd3});
+		setRefInfo(p1cd2, new ICConfigurationDescription[] {p2cd2});
+		setRefEntries(p1cd3, new ICConfigurationDescription[] {p2cd1});
 
-		setRefs(p2cd1, new ICConfigurationDescription[] {p3cd1});
-		setRefs(p2cd2, new ICConfigurationDescription[] {p3cd2});
-		setRefs(p2cd3, new ICConfigurationDescription[] {p3cd3});
+		setRefEntries(p2cd1, new ICConfigurationDescription[] {p3cd1});
+		setRefEntries(p2cd2, new ICConfigurationDescription[] {p3cd2});
+		setRefEntries(p2cd3, new ICConfigurationDescription[] {p3cd3});
 
-		setRefs(p3cd1, new ICConfigurationDescription[] {p4cd2});
-		setRefs(p3cd2, new ICConfigurationDescription[] {p4cd2});
-		setRefs(p3cd3, new ICConfigurationDescription[] {p4cd2});
+		setRefInfo(p3cd1, new ICConfigurationDescription[] {p4cd2});
+		setRefEntries(p3cd2, new ICConfigurationDescription[] {p4cd2});
+		setRefInfo(p3cd3, new ICConfigurationDescription[] {p4cd2});
 	
 		coreModel.setProjectDescription(p1.getProject(), des1);
 		coreModel.setProjectDescription(p2.getProject(), des2);
@@ -107,13 +113,24 @@ public class CConfigurationDescriptionReferenceTests extends BaseTestCase {
 		coreModel.setProjectDescription(p4.getProject(), des4);
 	}
 
-	private void setRefs(ICConfigurationDescription node, ICConfigurationDescription[] refs) {
-		Map p1RefData = new LinkedHashMap<String, String>();
+	private void setRefInfo(ICConfigurationDescription node, ICConfigurationDescription[] refs) {
+		Map refData = new LinkedHashMap<String, String>();
 		for (ICConfigurationDescription ref : refs) {
 			String projectName = ref.getProjectDescription().getName();
-			p1RefData.put(projectName, ref.getId());
+			refData.put(projectName, ref.getId());
 		}
-		node.setReferenceInfo(p1RefData);
+		node.setReferenceInfo(refData);
+	}
+
+	private void setRefEntries(ICConfigurationDescription node, ICConfigurationDescription[] refs) throws WriteAccessException, CoreException {
+		List<ICReferenceEntry> refData = new ArrayList<ICReferenceEntry>();
+		int i = 0;
+		for (ICConfigurationDescription ref : refs) {
+			String projectName = ref.getProjectDescription().getName();
+			refData.add(new CReferenceEntry(projectName, ref.getId()));
+			i++;
+		}
+		node.setReferenceEntries(refData.toArray(new ICReferenceEntry[refData.size()]));
 	}
 
 	private ICConfigurationDescription newCfg(ICProjectDescription des, String project, String config) throws CoreException {
@@ -127,11 +144,11 @@ public class CConfigurationDescriptionReferenceTests extends BaseTestCase {
 		
 		assertEdges(p1cd1, new ICConfigurationDescription[] {p2cd3}, true);
 		assertEdges(p1cd2, new ICConfigurationDescription[] {p2cd2}, true);
-		assertEdges(p1cd3, new ICConfigurationDescription[] {p2cd1}, true);
+		assertEdges(p1cd3, new ICConfigurationDescription[] {p2cd1}, new ICConfigurationDescription[] {}, true);
 		
-		assertEdges(p2cd1, new ICConfigurationDescription[] {p3cd1}, true);
+		assertEdges(p2cd1, new ICConfigurationDescription[] {p3cd1}, new ICConfigurationDescription[] {}, true);
 		assertEdges(p2cd2, new ICConfigurationDescription[] {p3cd2}, true);
-		assertEdges(p2cd3, new ICConfigurationDescription[] {p3cd3}, true);
+		assertEdges(p2cd3, new ICConfigurationDescription[] {p3cd3}, new ICConfigurationDescription[] {}, true);
 		
 		assertEdges(p3cd1, new ICConfigurationDescription[] {p4cd2}, true);
 		assertEdges(p3cd2, new ICConfigurationDescription[] {p4cd2}, true);
@@ -193,7 +210,7 @@ public class CConfigurationDescriptionReferenceTests extends BaseTestCase {
 			 * p2: cd1  \
 			 * p3:      cd1
 			 */
-			setRefs(p1cd1, new ICConfigurationDescription[] {p2cd1, p3cd1});
+			setRefInfo(p1cd1, new ICConfigurationDescription[] {p2cd1, p3cd1});
 			coreModel.setProjectDescription(p1.getProject(), des1);
 			coreModel.setProjectDescription(p2.getProject(), des2);
 			coreModel.setProjectDescription(p3.getProject(), des3);
@@ -206,7 +223,7 @@ public class CConfigurationDescriptionReferenceTests extends BaseTestCase {
 			assertEquals(cfgs[1].getId(), p3cd1.getId());
 
 			// Swap them round and check that the order is still persisted...
-			setRefs(p1cd1, new ICConfigurationDescription[] {p3cd1, p2cd1});
+			setRefInfo(p1cd1, new ICConfigurationDescription[] {p3cd1, p2cd1});
 			coreModel.setProjectDescription(p1.getProject(), des1);
 			cfgs = CoreModelUtil.getReferencedConfigurationDescriptions(p1cd1, false);
 			assertTrue(cfgs.length == 2);
@@ -229,24 +246,54 @@ public class CConfigurationDescriptionReferenceTests extends BaseTestCase {
 	}
 
 	protected void assertEdges(ICConfigurationDescription cfgDes, ICConfigurationDescription[] expected, boolean references) {
+		assertEdges(cfgDes, expected, expected, references);
+	}
+
+	protected void assertEdges(ICConfigurationDescription cfgDes, ICConfigurationDescription[] expected, ICConfigurationDescription[] expectedBuild, boolean references) {
 		ICConfigurationDescription[] actual;
 		
-		if(references) {
-			actual= CoreModelUtil.getReferencedConfigurationDescriptions(cfgDes, false);
+		if (references) {
+			actual = CoreModelUtil.getReferencedConfigurationDescriptions(cfgDes, false);
+
+			ICReferenceEntry[] entries = cfgDes.getReferenceEntries();
+			assertDescsEqual(expected, entriesToDescs(entries));
 		} else {
-			actual= CoreModelUtil.getReferencingConfigurationDescriptions(cfgDes, false);
+			actual = CoreModelUtil.getReferencingConfigurationDescriptions(cfgDes, false);
 		}
-		
-		assertEquals(expected.length, actual.length);
-		
-		List actualIds = new ArrayList();
+
+		assertDescsEqual(expected, actual);
+	}
+
+	protected void assertDescsEqual(ICConfigurationDescription[] expected, ICConfigurationDescription[] actual) {
+		// Check both arrays contain the same items (including the same number of duplicates), regardless of order
+		List<String> expectedIds = new ArrayList<String>();
+		for (ICConfigurationDescription element : expected) {
+			expectedIds.add(element.getId());
+		}
+		List<String> actualIds = new ArrayList<String>();
 		for (ICConfigurationDescription element : actual) {
 			actualIds.add(element.getId());
 		}
-		// check for each ID, don't use a Set so we detect duplicates
-		for (ICConfigurationDescription element : expected) {
-			assertTrue(element.getId()+" is missing", actualIds.contains(element.getId()));
+		assertEquals(expectedIds.size(), actualIds.size());
+		Collections.sort(expectedIds);
+		Collections.sort(actualIds);
+		Iterator<String> i = expectedIds.iterator();
+		Iterator<String> j = actualIds.iterator();
+		while (i.hasNext() && j.hasNext()) {
+			assertEquals(i.next(), j.next());
 		}
+	}
+
+	private ICConfigurationDescription[] entriesToDescs(ICReferenceEntry[] entries) {
+		IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+		CoreModel model = CoreModel.getDefault();
+		List<ICConfigurationDescription> descs = new ArrayList<ICConfigurationDescription>();
+		for (ICReferenceEntry entry: entries) {
+			IProject project = root.getProject(entry.getProject());
+			ICConfigurationDescription des = model.getProjectDescription(project, false).getConfigurationById(entry.getConfiguration());
+			descs.add(des);
+		}
+		return descs.toArray(new ICConfigurationDescription[descs.size()]);
 	}
 	
 	@Override

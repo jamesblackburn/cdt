@@ -11,12 +11,19 @@
 package org.eclipse.cdt.internal.core.settings.model;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.Map.Entry;
 
 import org.eclipse.cdt.core.cdtvariables.ICdtVariable;
 import org.eclipse.cdt.core.cdtvariables.ICdtVariablesContributor;
 import org.eclipse.cdt.core.settings.model.CConfigurationStatus;
+import org.eclipse.cdt.core.settings.model.CReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICBuildSetting;
 import org.eclipse.cdt.core.settings.model.ICConfigExtensionReference;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
@@ -25,6 +32,7 @@ import org.eclipse.cdt.core.settings.model.ICFileDescription;
 import org.eclipse.cdt.core.settings.model.ICFolderDescription;
 import org.eclipse.cdt.core.settings.model.ICLanguageSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICSettingBase;
 import org.eclipse.cdt.core.settings.model.ICSettingContainer;
@@ -387,6 +395,24 @@ public class CConfigurationDescriptionCache extends CDefaultConfigurationData
 			fProjSourceEntries = CDataUtil.adjustEntries(fSourceEntries, true, project);
 		}
 	}
+
+	public ICReferenceEntry[] getReferenceEntries() {
+		Set<ICReferenceEntry> entries = new LinkedHashSet<ICReferenceEntry>();
+		// Add the spec settings entries
+		entries.addAll(getSpecSettings().getReferenceInfo());
+		
+		// TODO: can we dump this ? Add configuration data entries:
+//		if (getConfigurationData() == null)
+//			entries.addAll(Arrays.asList(super.getReferenceEntries()));
+//		else
+//			entries.addAll(Arrays.asList(getConfigurationData().getReferenceEntries()));
+
+		return entries.toArray(new ICReferenceEntry[entries.size()]);
+	}
+
+	public void setReferenceEntries(ICReferenceEntry[] entries) {
+		throw ExceptionFactory.createIsReadOnlyException();
+	}
 	
 	private IProject getProject(){
 		return isPreferenceConfiguration() ? null : getProjectDescription().getProject();
@@ -397,10 +423,20 @@ public class CConfigurationDescriptionCache extends CDefaultConfigurationData
 		throw ExceptionFactory.createIsReadOnlyException();
 	}
 
+	/** @deprecated Use {@link #getReferenceEntries()} instead. */
+	@Deprecated
 	public Map<String, String> getReferenceInfo() {
-		return getSpecSettings().getReferenceInfo();
+		// Convert references from an array of CReferenceEntry objects to a Map
+		ICReferenceEntry[] entries = getReferenceEntries();
+		Map<String, String> refs = new LinkedHashMap<String, String>();
+		for (ICReferenceEntry entry : entries) {
+			refs.put(entry.getProject(), entry.getConfiguration());
+		}
+		return refs;
 	}
 
+	/** @deprecated Use {@link #setReferenceEntries(ICReferenceEntry[])} instead. */
+	@Deprecated
 	public void setReferenceInfo(Map<String, String> refs) {
 		throw ExceptionFactory.createIsReadOnlyException();
 	}

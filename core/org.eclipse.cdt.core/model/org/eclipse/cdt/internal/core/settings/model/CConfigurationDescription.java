@@ -12,13 +12,18 @@
 package org.eclipse.cdt.internal.core.settings.model;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
 
 import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.cdtvariables.ICdtVariablesContributor;
 import org.eclipse.cdt.core.settings.model.CConfigurationStatus;
+import org.eclipse.cdt.core.settings.model.CReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICBuildSetting;
 import org.eclipse.cdt.core.settings.model.ICConfigExtensionReference;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
@@ -27,6 +32,7 @@ import org.eclipse.cdt.core.settings.model.ICFileDescription;
 import org.eclipse.cdt.core.settings.model.ICFolderDescription;
 import org.eclipse.cdt.core.settings.model.ICLanguageSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICSettingBase;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
@@ -537,21 +543,53 @@ public class CConfigurationDescription extends CDataProxyContainer implements IC
 //		return des;
 //	}
 
+	/** @deprecated Use {@link #getReferenceEntries()} instead. */
+	@Deprecated
 	public Map<String, String> getReferenceInfo() {
-		try {
-			CConfigurationSpecSettings specs = getSpecSettings();
-			return specs.getReferenceInfo();
-		} catch (CoreException e) {
+		// Convert references from an array of CReferenceEntry objects to a Map
+		ICReferenceEntry[] entries = getReferenceEntries();
+		Map<String, String> refs = new LinkedHashMap<String, String>();
+		for (ICReferenceEntry entry : entries) {
+			refs.put(entry.getProject(), entry.getConfiguration());
 		}
-		return new HashMap<String, String>(0);
+		return refs;
 	}
 
+	/** @deprecated Use {@link #setReferenceEntries(ICReferenceEntry[])} instead. */
+	@Deprecated
 	public void setReferenceInfo(Map<String, String> refs) {
 		try {
-			CConfigurationSpecSettings specs = getSpecSettings();
-			specs.setReferenceInfo(refs);
+			List<ICReferenceEntry> entries = new ArrayList<ICReferenceEntry>();
+			for (Entry<String, String> ref: refs.entrySet())
+				entries.add(new CReferenceEntry(ref.getKey(), ref.getValue()));
+			setReferenceEntries(entries.toArray(new ICReferenceEntry[entries.size()]));
+		} catch (WriteAccessException e) {
 		} catch (CoreException e) {
 		}
+	}
+
+	public ICReferenceEntry[] getReferenceEntries() {
+		Set<ICReferenceEntry> entries = new LinkedHashSet<ICReferenceEntry>();		
+		try {
+			entries.addAll(getSpecSettings().getReferenceInfo());
+//			// TODO: mind boggles as to why it was done like this?
+//			entries.addAll(Arrays.asList(getConfigurationData(false).getReferenceEntries()));
+		} catch (CoreException e) {
+			CCorePlugin.log(e);
+		}
+		return entries.toArray(new ICReferenceEntry[entries.size()]);
+	}
+
+	public void setReferenceEntries(ICReferenceEntry[] entries) throws CoreException, WriteAccessException {
+//		try {
+//			Map<String, String> refs = new LinkedHashMap<String, String>();
+//			for (ICReferenceEntry entry : entries)
+//				refs.put(entry.getProject(), entry.getConfiguration());
+			getSpecSettings().setReferenceInfo(entries);
+//		} catch (CoreException e) {
+//		}
+		// Mind Boggles: For the moment keep doing this...
+//		getConfigurationData(true).setReferenceEntries(entries);
 	}
 
 	public ICExternalSetting createExternalSetting(String[] languageIDs,

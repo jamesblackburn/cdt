@@ -67,6 +67,7 @@ import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionListener;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionManager;
 import org.eclipse.cdt.core.settings.model.ICProjectDescriptionWorkspacePreferences;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICSettingBase;
 import org.eclipse.cdt.core.settings.model.ICSettingEntry;
@@ -172,6 +173,8 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 	private static final String DEFAULT_CFG_NAME = "Configuration"; //$NON-NLS-1$
 
 	private static final QualifiedName SCANNER_INFO_PROVIDER_PROPERTY = new QualifiedName(CCorePlugin.PLUGIN_ID, "scannerInfoProvider"); //$NON-NLS-1$
+
+	private static final ICReferenceEntry[] EMPTY_REFERENCE_ENTRY_ARRAY = new ICReferenceEntry[0];
 
 	static class CompositeWorkspaceRunnable implements IWorkspaceRunnable {
 		private List<IWorkspaceRunnable> fRunnables = new ArrayList<IWorkspaceRunnable>();
@@ -627,7 +630,7 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 	/*
 	 * returns true if the project description was modified false - otherwise
 	 */
-	public boolean checkHandleActiveCfgChange(CProjectDescription newDes, ICProjectDescription oldDes, IProjectDescription eDes, IProgressMonitor monitor){
+	public boolean checkHandleActiveCfgChange(CProjectDescription newDes, ICProjectDescription oldDes, SettingsContext eDes, IProgressMonitor monitor){
 		if(newDes == null)
 			return false;
 		ICConfigurationDescription newCfg = newDes.getActiveConfiguration();
@@ -681,12 +684,19 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 	}
 
 	/**
-	 * Fix up platform references having changed CDT configuration references
+	 * Synchronize CDT configuration references with platform project variant references.
+	 * @param des Old project description for the project being synchronized
+	 * @param newCDesc New project description for the project being synchronized
+	 * @param newCfg The new CDT configuration description
+	 * @param oldCfg Old CDT configuration description
+	 * @param monitor
+	 * @return true if the references changed between the two configuration descriptions
+	 * @throws CoreException
 	 */
-	@SuppressWarnings("unchecked")
-	private boolean checkProjectRefChange(IProjectDescription des, ICProjectDescription newCDesc, ICConfigurationDescription newCfg, ICConfigurationDescription oldCfg, IProgressMonitor monitor) throws CoreException{
-		if(newCfg == null)
+	private boolean checkProjectRefChange(SettingsContext context, ICProjectDescription newCDesc, ICConfigurationDescription newCfg, ICConfigurationDescription oldCfg, IProgressMonitor monitor) throws CoreException {
+		if (newCfg == null)
 			return false;
+		IProjectDescription des = context.getEclipseProjectDescription();
 
 		Map<String, String> oldMap = oldCfg != null ? oldCfg.getReferenceInfo() : Collections.EMPTY_MAP;
 		Map<String, String> newMap = newCfg.getReferenceInfo();
@@ -757,10 +767,12 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 		return des.checkPersistSettingCfg(oldId, false);
 	}
 
-	private boolean checkBuildSystemChange(IProjectDescription des,
+	private boolean checkBuildSystemChange(SettingsContext context,
 			ICConfigurationDescription newCfg,
 			ICConfigurationDescription oldCfg,
 			IProgressMonitor monitor) throws CoreException{
+		IProjectDescription des = context.getEclipseProjectDescription();
+		
 		String newBsId = newCfg != null ? newCfg.getBuildSystemId() : null;
 		String oldBsId = oldCfg != null ? oldCfg.getBuildSystemId() : null;
 
@@ -791,6 +803,7 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 		final String[] newNatureIds = cur.toArray(new String[cur.size()]);
 		if (!Arrays.equals(newNatureIds, natureIds)) {
 			des.setNatureIds(newNatureIds);
+			context.setEclipseProjectDescription(des);
 			return true;
 		}
 
@@ -1580,37 +1593,37 @@ public class CProjectDescriptionManager implements ICProjectDescriptionManager {
 			delta.addChangeFlags(cfgRefFlags);
 	}
 
+	/**
+	 * Determine if the configuration references have changed between the given descriptions, and if so how.
+	 * @param newDes the old description
+	 * @param oldDes the new description
+	 * @return A bit mask indicating what changed:
+	 * <ul>
+	 * <li>{@link ICDescriptionDelta#CFG_REF_REMOVED} indicates that a reference was removed</li>
+	 * <li>{@link ICDescriptionDelta#CFG_REF_ADDED} indicates that a reference was added</li>
+	 * </ul>
+	 */
 	private int calcRefChangeFlags(ICConfigurationDescription newDes, ICConfigurationDescription oldDes){
-		Map<String, String> newMap = newDes != null ? newDes.getReferenceInfo() : null;
-		Map<String, String> oldMap = oldDes != null ? oldDes.getReferenceInfo() : null;
+		HashSet<ICReferenceEntry> newRefs = new HashSet<ICReferenceEntry>(Arrays.asList(newDes != null ? newDes.getReferenceEntries() : EMPTY_REFERENCE_ENTRY_ARRAY));
+		HashSet<ICReferenceEntry> oldRefs = new HashSet<ICReferenceEntry>(Arrays.asList(oldDes != null ? oldDes.getReferenceEntries() : EMPTY_REFERENCE_ENTRY_ARRAY));
 
 		int flags = 0;
-		if(newMap == null || newMap.size() == 0){
-			if(oldMap != null && oldMap.size() != 0){
-				flags = ICDescriptionDelta.CFG_REF_REMOVED;
-			}
+		if (newRefs.isEmpty() && !oldRefs.isEmpty()) {
+			flags = ICDescriptionDelta.CFG_REF_REMOVED;
+		} else if (oldRefs.isEmpty() && !newRefs.isEmpty()) {
+			flags = ICDescriptionDelta.CFG_REF_ADDED;
 		} else {
-			if(oldMap == null || oldMap.size() == 0){
-				flags = ICDescriptionDelta.CFG_REF_ADDED;
-			} else {
-				boolean stop = false;
-				for (Map.Entry<String, String> newEntry : newMap.entrySet()) {
-					String newProj = newEntry.getKey();
-					String newCfg = newEntry.getValue();
-					String oldCfg = oldMap.remove(newProj);
-					if(!newCfg.equals(oldCfg)){
-						flags |= ICDescriptionDelta.CFG_REF_ADDED;
-						if(oldCfg != null){
-							flags |= ICDescriptionDelta.CFG_REF_REMOVED;
-							stop = true;
-						}
-						if(stop)
-							break;
-					}
+			for (ICReferenceEntry newEntry : newRefs) {
+				if (!oldRefs.contains(newEntry)) {
+					flags |= ICDescriptionDelta.CFG_REF_ADDED;
+					break;
 				}
-
-				if(!oldMap.isEmpty())
+			}
+			for (ICReferenceEntry oldEntry : oldRefs) {
+				if (!newRefs.contains(oldEntry)) {
 					flags |= ICDescriptionDelta.CFG_REF_REMOVED;
+					break;
+				}
 			}
 		}
 

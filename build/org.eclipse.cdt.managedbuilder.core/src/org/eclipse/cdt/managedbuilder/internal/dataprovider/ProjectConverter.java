@@ -29,6 +29,7 @@ import org.eclipse.cdt.core.settings.model.ICConfigExtensionReference;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICExternalSetting;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
+import org.eclipse.cdt.core.settings.model.ICReferenceEntry;
 import org.eclipse.cdt.core.settings.model.ICStorageElement;
 import org.eclipse.cdt.core.settings.model.extension.CConfigurationData;
 import org.eclipse.cdt.core.settings.model.extension.ICProjectConverter;
@@ -394,14 +395,8 @@ public class ProjectConverter implements ICProjectConverter {
 							}
 						}
 
-						IPath projPaths[] = refInfo.getReferencedProjectsPaths();
-						if(projPaths.length != 0){
-							Map<String, String> map = new HashMap<String, String>(projPaths.length);
-							for(int i = 0; i < projPaths.length; i++){
-								map.put(projPaths[i].segment(0), "");	//$NON-NLS-1$
-							}
-							des.setReferenceInfo(map);
-						}
+						ICReferenceEntry[] refs = refInfo.getProjectReferences();
+						des.setReferenceEntries(refs);
 					}
 				}
 				des.removeStorage(OLD_PATH_ENTRY_ID);

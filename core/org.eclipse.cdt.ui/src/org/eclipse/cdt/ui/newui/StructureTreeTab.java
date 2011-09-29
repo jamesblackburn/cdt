@@ -450,7 +450,7 @@ public class StructureTreeTab  extends AbstractCPropertyTab {
 		create(ti, "getId()", cfg.getId()); //$NON-NLS-1$
 		create(ti, "getName()", cfg.getName()); //$NON-NLS-1$
 		update(ti, "getParent()", cfg.getParent()); //$NON-NLS-1$
-		update(ti, "getReferenceInfo()", cfg.getReferenceInfo()); //$NON-NLS-1$
+		update(ti, "getReferenceEntries()", cfg.getReferenceEntries()); //$NON-NLS-1$
 		expand(ti, "getResourceDescriptions()", cfg.getResourceDescriptions()); //$NON-NLS-1$
 		update(ti, "getRootFolderDescription()", cfg.getRootFolderDescription()); //$NON-NLS-1$
 		expand(ti, "getSourceEntries()", cfg.getSourceEntries()); //$NON-NLS-1$
