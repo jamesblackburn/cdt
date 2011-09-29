@@ -30,12 +30,34 @@ public interface ICModelMarker {
 	public static final String C_MODEL_PROBLEM_MARKER = CCorePlugin.PLUGIN_ID + ".problem"; //$NON-NLS-1$
 	
 	/**
+	 * C model extension problem markers attribute which specifies the project which 
+	 * was being built when the marker was logged.  This attribute will be unset
+	 * in the case that the project is the same as the project where the marker is logged.
+	 * @since 5.2
+	 */
+	public static final String C_MODEL_MARKER_BUILT_PROJECT_NAME = "problem.builtProjectName"; //$NON-NLS-1$
+
+	/**
+	 * C model extension problem markers attribute which specifies the project
+	 * configuration associated with the problem marker
+	 * @since 5.2
+	 */
+	public static final String C_MODEL_MARKER_CONFIGURATION_NAME = "problem.configurationName"; //$NON-NLS-1$
+
+	/**
+	 * Model marker attribute which represents the return status / code represented by the
+	 * marker
+	 * @since 5.2
+	 */
+	public static final String C_MODEL_MARKER_RETURN_CODE = "problem.returnCode";  //$NON-NLS-1$
+
+	/**
 	 * C model extension to the marker problem markers which may hold a hint on
 	 * the variable name that caused the error. Used by the ui to highlight the variable
 	 * itself if it can be found.
 	 */
 	public static final String C_MODEL_MARKER_VARIABLE = "problem.variable"; //$NON-NLS-1$
-	
+
 	/**
 	 * C model extension to the marker problem markers which may hold 
 	 * the path to the workspace external location of the file containing the problem 

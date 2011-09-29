@@ -17,6 +17,7 @@ package org.eclipse.cdt.managedbuilder.internal.core;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -27,6 +28,7 @@ import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.ConsoleOutputStream;
 import org.eclipse.cdt.core.ProblemMarkerInfo;
 import org.eclipse.cdt.core.model.CoreModel;
+import org.eclipse.cdt.core.model.ICModelMarker;
 import org.eclipse.cdt.core.resources.ACBuilder;
 import org.eclipse.cdt.core.resources.IConsole;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
@@ -51,6 +53,7 @@ import org.eclipse.cdt.managedbuilder.makegen.IManagedBuilderMakefileGenerator;
 import org.eclipse.cdt.managedbuilder.makegen.IManagedBuilderMakefileGenerator2;
 import org.eclipse.cdt.newmake.core.IMakeBuilderInfo;
 import org.eclipse.core.resources.IFolder;
+import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IResourceDelta;
@@ -741,6 +744,10 @@ public class CommonBuilder extends ACBuilder {
 
 			if(status.isBuild()){
 				try {
+				// remove all markers for this project
+				setCurrentConfigurationName(bInfo.getConfiguration().getName());
+				removeAllMarkers(bInfo.getProject(), bInfo.getConfiguration().getName());
+
 				boolean isClean = builder.getBuildRunner().invokeBuild(
 						kind,
 						bInfo.getProject(),
@@ -1330,5 +1337,36 @@ public class CommonBuilder extends ACBuilder {
 
 		// Success!
 		return null;
+	}
+
+	/**
+	 * Remove all CDT problem markers attached to the specified project configuration
+	 */
+	private void removeAllMarkers(IProject currProject, String configName) throws CoreException {
+		IWorkspace workspace = currProject.getWorkspace();
+
+		// remove markers on the requested configuration
+		IMarker[] markers = currProject.findMarkers(ICModelMarker.C_MODEL_PROBLEM_MARKER, true, IResource.DEPTH_INFINITE);
+		Collection<IMarker> toRemove = new ArrayList<IMarker>();
+		for (IMarker marker : markers) {
+			// If marker configuration name is null && we're clearing such markers
+			//   || configuration name to clear is equal to marker config name
+			//  Remove
+			String configNameAttr = marker.getAttribute(ICModelMarker.C_MODEL_MARKER_CONFIGURATION_NAME, null) ;
+			if (configNameAttr == configName
+					|| (configName != null && configName.equals(configNameAttr)))
+				toRemove.add(marker);
+		}
+		if (!toRemove.isEmpty())
+			workspace.deleteMarkers(toRemove.toArray(new IMarker[toRemove.size()]));
+
+		// Remove other markers which match this Project / Configuration name
+		if (configName != null) {
+			workspace.getRoot().findMarkers(ICModelMarker.C_MODEL_PROBLEM_MARKER, true, IResource.DEPTH_INFINITE);
+			toRemove.clear();
+			for (IMarker marker : markers)
+				toRemove.add(marker);
+			workspace.deleteMarkers(toRemove.toArray(new IMarker[toRemove.size()]));
+		}
 	}
 }
