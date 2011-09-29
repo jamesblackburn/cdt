@@ -18,11 +18,14 @@ package org.eclipse.cdt.managedbuilder.internal.core;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,8 +33,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
+import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.envvar.IEnvironmentVariable;
 import org.eclipse.cdt.core.model.CoreModel;
+import org.eclipse.cdt.core.model.ICModelMarker;
 import org.eclipse.cdt.core.resources.ACBuilder;
 import org.eclipse.cdt.core.settings.model.CIncludeFileEntry;
 import org.eclipse.cdt.core.settings.model.CIncludePathEntry;
@@ -39,6 +44,7 @@ import org.eclipse.cdt.core.settings.model.CMacroEntry;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.internal.core.envvar.EnvironmentVariableManager;
+import org.eclipse.cdt.internal.core.settings.model.CProjectDescriptionManager;
 import org.eclipse.cdt.managedbuilder.core.BuildException;
 import org.eclipse.cdt.managedbuilder.core.IConfiguration;
 import org.eclipse.cdt.managedbuilder.core.IManagedBuildInfo;
@@ -50,11 +56,12 @@ import org.eclipse.cdt.managedbuilder.core.ManagedBuilderCorePlugin;
 import org.eclipse.core.filesystem.EFS;
 import org.eclipse.core.filesystem.IFileStore;
 import org.eclipse.core.filesystem.URIUtil;
-import org.eclipse.core.resources.ICommand;
+import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IProjectDescription;
 import org.eclipse.core.resources.IResource;
+import org.eclipse.core.resources.IWorkspace;
 import org.eclipse.core.resources.IWorkspaceDescription;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.IWorkspaceRunnable;
@@ -80,19 +87,27 @@ import org.eclipse.osgi.service.datalocation.Location;
  * Provides:
  *   - Import projects :                       -import     {[uri:/]/path/to/project}
  *   - Import all projects in the tree :       -importAll  {[uri:/]/path/to/projectTreeURI}
+ *   - List projects/configs in the workspace :-list
  *   - Build projects / the workspace :        -build      {project_name_reg_ex/config_name_reg_ex | all}
+ *   - Clean projects / the workspace :        -cleanNoBuild {project_name_reg_ex/config_name_reg_ex | all}
  *   - Clean build projects / the workspace :  -cleanBuild {project_name_reg_ex/config_name_reg_ex | all}
  *   - Add Include path to build :             -I          {include_path}
  *   - Add Include file to build :             -include    {include_file}
  *   - Add preprocessor define to build :      -D          {prepoc_define}
+ *   - Build in parallel :                     -jN
+ *   - Dump the workspace markers to stdout :  -dumpMarkers
+ *   - Dump the workspace markers to a file :  -dumpMarkersToFile {[uri:/]/path/to/file}
+ *   - Stop on first build error : 			   -stopOnError
+ *   - Don't refresh before starting build :   -stopOnError
  *   - Replace environment variable in build : -E          {var=value}
  *   - Append environment variable to build :  -Ea         {var=value}
  *   - Prepend environment variable to build : -Ep         {var=value}
  *   - Remove environment variable in build :  -Er         {var}
- *   - Replace a tool option value:            -T          {toolid} {optionid=value}
- *   - Append to a tool option value:          -Ta         {toolid} {optionid=value}
- *   - Prepend to a tool option value:         -Tp         {toolid} {optionid=value}
- *   - Remove a tool option:                   -Tr         {toolid} {optionid=value}
+ *   - Replace a tool option:                  -T  {toolid} {optionid=value}
+ *   - Append to a tool option:                -Ta {toolid} {optionid=value}
+ *   - Prepend to a tool option:               -Tp {toolid} {optionid=value}
+ *   - Remove a tool option:                   -Tr {toolid} {optionid=value}
+ *   - List tools and the available options:   -Th {configuration}
  *
  * Build output is automatically sent to stdout.
  * @since 6.0
@@ -162,6 +177,8 @@ public class HeadlessBuilder implements IApplication {
 	/** OK return status */
 	public static final Integer OK = IApplication.EXIT_OK;
 
+	/** No Refresh */
+	boolean no_refresh = false;
 	/** Set of project URIs / paths to import */
 	private final Set<String> projectsToImport = new HashSet<String>();
 	/** Tree of projects to recursively import */
@@ -172,6 +189,14 @@ public class HeadlessBuilder implements IApplication {
 	private final Set<String> projectRegExToClean = new HashSet<String>();
 	private boolean buildAll = false;
 	private boolean cleanAll = false;
+	/** Export markers at end of the build? */
+	private boolean dumpMarkers = false;
+	private URI dumpMarkersToFile = null;
+	private Set<String> markers = new LinkedHashSet<String>();
+	/** Stop on first build error ? */
+	private boolean stopOnError = false;
+	/** Parallel job count */
+	public static int parallelJobs = 0;
 
 	/** List of Tool Option values being set */
 	private List<ToolOption> toolOptions = new ArrayList<ToolOption>();
@@ -243,40 +268,36 @@ public class HeadlessBuilder implements IApplication {
 		return cfgMap;
 	}
 
-	/*
-	 *  Build the given configurations using the specified build type (FULL, CLEAN, INCREMENTAL)
+	/**
+	 * Build the given configurations using the specified build type (FULL, CLEAN, INCREMENTAL)
+	 * Uses workspace API to ensure that referenced configurations are built, and everything is
+	 * built in the correct order.
 	 */
 	private void buildConfigurations(Map<IProject, Set<ICConfigurationDescription>> projConfigs, final IProgressMonitor monitor, final int buildType) throws CoreException {
+		final IWorkspace workspace = ResourcesPlugin.getWorkspace();
+		final List<IBuildConfiguration> variantsToBuild = new ArrayList<IBuildConfiguration>();
 		for (Map.Entry<IProject, Set<ICConfigurationDescription>> entry : projConfigs.entrySet()) {
 			final IProject proj = entry.getKey();
 			Set<ICConfigurationDescription> cfgDescs = entry.getValue();
 
-			IConfiguration[] configs = new IConfiguration[cfgDescs.size()];
-			int i = 0;
-			for (ICConfigurationDescription cfgDesc : cfgDescs)
-				configs[i++] = ManagedBuildManager.getConfigurationForDescription(cfgDesc);
-			final Map<String, String> map = BuilderFactory.createBuildArgs(configs);
-
-			IWorkspaceRunnable op = new IWorkspaceRunnable() {
-				public void run(IProgressMonitor monitor) throws CoreException {
-					ICommand[] commands = proj.getDescription().getBuildSpec();
-					monitor.beginTask("", commands.length); //$NON-NLS-1$
-					for (int i = 0; i < commands.length; i++) {
-						if (commands[i].getBuilderName().equals(CommonBuilder.BUILDER_ID)) {
-							proj.build(buildType, CommonBuilder.BUILDER_ID, map, new SubProgressMonitor(monitor, 1));
-						} else {
-							proj.build(buildType, commands[i].getBuilderName(),
-							commands[i].getArguments(), new SubProgressMonitor(monitor, 1));
-						}
-					}
-					monitor.done();
-				}
-			};
-			try {
-				ResourcesPlugin.getWorkspace().run(op, monitor);
-			} finally {
-				monitor.done();
+			for (ICConfigurationDescription cfgDesc : cfgDescs) {
+				IConfiguration cfg = ManagedBuildManager.getConfigurationForDescription(cfgDesc);
+				variantsToBuild.add(workspace.newBuildConfig(proj.getName(), cfg.getName()));
 			}
+		}
+
+		IWorkspaceRunnable op = new IWorkspaceRunnable() {
+			public void run(IProgressMonitor monitor) throws CoreException {
+				workspace.build(variantsToBuild.toArray(new IBuildConfiguration[variantsToBuild.size()]), buildType, true, new SubProgressMonitor(monitor, 1));
+				if (HeadlessBuilder.this.dumpMarkers)
+					collectMarkers();
+			}
+		};
+
+		try {
+			ResourcesPlugin.getWorkspace().run(op, monitor);
+		} finally {
+			monitor.done();
 		}
 	}
 
@@ -291,29 +312,11 @@ public class HeadlessBuilder implements IApplication {
 		IProgressMonitor monitor = new PrintingProgressMonitor();
 		InputStream in = null;
 		try {
-			URI project_uri = null;
+			URI project_uri;
 			try {
-				project_uri = URI.create(projURIStr);
-			} catch (Exception e) {
-				// Will be treated as straightforward path in the case below
-			}
-
-			// Handle local paths as well
-			if (project_uri == null || project_uri.getScheme() == null) {
-				IPath p = new Path(projURIStr).addTrailingSeparator();
-				project_uri = URIUtil.toURI(p);
-
-				// Handle relative paths as relative to cwd
-				if (project_uri.getScheme() == null) {
-					String cwd = System.getProperty("user.dir");  //$NON-NLS-1$
-					p = new Path(cwd).addTrailingSeparator();
-					p = p.append(projURIStr);
-					project_uri = URIUtil.toURI(p);
-				}
-				if (project_uri.getScheme() == null) {
-					System.err.println(HeadlessBuildMessages.HeadlessBuilder_invalid_uri + project_uri);
-					return ERROR;
-				}
+				project_uri = createURI(projURIStr);
+			} catch (IllegalArgumentException e) {
+				return ERROR;
 			}
 
 			if (recurse) {
@@ -370,7 +373,7 @@ public class HeadlessBuilder implements IApplication {
 			}
 
 			project.create(desc, monitor);
-			project.open(monitor);
+			project.open(IResource.BACKGROUND_REFRESH, monitor);
 		} finally {
 			try {
 				if (in != null)
@@ -398,8 +401,9 @@ public class HeadlessBuilder implements IApplication {
 		if (!checkInstanceLocation())
 			return ERROR;
 
+		long start = System.currentTimeMillis();
 		IProgressMonitor monitor = new PrintingProgressMonitor();
-		IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
+		final IWorkspaceRoot root = ResourcesPlugin.getWorkspace().getRoot();
 
 		final boolean isAutoBuilding = root.getWorkspace().isAutoBuilding();
 		try {
@@ -426,111 +430,228 @@ public class HeadlessBuilder implements IApplication {
 			/*
 			 * Perform the project import
 			 */
-			// Import any projects that need importing
-			for (String projURIStr : projectsToImport) {
-				int status = importProject(projURIStr, false);
-				if (status != OK)
-					return status;
-			}
-			for (String projURIStr : projectTreeToImport) {
-				int status = importProject(projURIStr, true);
-				if (status != OK)
-					return status;
-			}
+			// Import any projects that need importing & refresh the workspace
+			// Perform in a WorkspaceJob to minimize deltas
+			final int [] status = new int[] {OK};
+			ResourcesPlugin.getWorkspace().run(new IWorkspaceRunnable() {
+
+				public void run(IProgressMonitor monitor) throws CoreException {
+					for (String projURIStr : projectsToImport) {
+						status[0] = importProject(projURIStr, false);
+						if (status[0] != OK)
+							return;
+					}
+					for (String projURIStr : projectTreeToImport) {
+						status[0] = importProject(projURIStr, true);
+						if (status[0] != OK)
+							return;
+					}
+					// Ensure all the resources are up to date before starting
+					if (!no_refresh)
+						root.refreshLocal(IResource.DEPTH_INFINITE, null);
+				}
+			}, null, IWorkspace.AVOID_UPDATE, null);
+			if (status[0] != OK)
+				return status[0];
+
+			System.out.println("Import / Refresh finished: " + (System.currentTimeMillis() - start)+ "ms");
 
 			// Hook in our external settings to the build
 			HeadlessBuilderExternalSettingsProvider.hookExternalSettingsProvider();
 
 			IProject[] allProjects = root.getProjects();
-			// Map from Project -> Configurations to build. We also Build all projects which are clean'd
+			// Map from Project -> Configurations to build. We also Build all projects which are marked -cleanBuild
+			Map<IProject, Set<ICConfigurationDescription>> configsToClean = new HashMap<IProject, Set<ICConfigurationDescription>>();
 			Map<IProject, Set<ICConfigurationDescription>> configsToBuild = new HashMap<IProject, Set<ICConfigurationDescription>>();
+
+			// Don't wait for the indexer...
+			Job.getJobManager().cancel(CCorePlugin.getIndexManager());
+
+			// Don't start building until all the reconciling is done
+			// Wait for any outstanding jobs to finish
+			int i = 0;
+			while (!Job.getJobManager().isIdle()) {
+				if (i++ % 100 == 0)
+					System.out.println("Waiting for outstanding jobs to finish before starting...");
+				try {
+					Thread.sleep(10);
+					// Don't wait for the indexer
+					Job.getJobManager().cancel(CCorePlugin.getIndexManager());
+				} catch (InterruptedException e) {
+					// don't care
+				}
+			}
 
 			/*
 			 * Perform the Clean / Build
 			 */
-			final boolean buildAllConfigs = ACBuilder.needAllConfigBuild();
 			try {
 				// Set the tool options for all project configurations
 				// (This can't be done just for the projects being built, as they
 				// may cause other projects to be built via references)
-				if (!toolOptions.isEmpty())
+				if (!toolOptions.isEmpty()) {
 					for (IProject project : allProjects) {
 						IManagedBuildInfo info = ManagedBuildManager.getBuildInfo(project);
-						if (info == null)
-							continue;
-						IManagedProject mProj = info.getManagedProject();
-						IConfiguration[] cfgs = mProj.getConfigurations();
-						for (IConfiguration cfg : cfgs)
-							setToolOptions(cfg);
-						ManagedBuildManager.saveBuildInfo(project, true);
+						if (info != null) {
+							IManagedProject mProj = info.getManagedProject();
+							if (mProj != null) {
+								IConfiguration[] cfgs = mProj.getConfigurations();
+								for (IConfiguration cfg : cfgs)
+									setToolOptions(cfg);
+								ManagedBuildManager.saveBuildInfo(project, true);
+							}
+						}
 					}
+				}
 
 				// Clean the projects
 				if (cleanAll) {
-					// Ensure we clean all the configurations
-					ACBuilder.setAllConfigBuild(true);
-
 					System.out.println(HeadlessBuildMessages.HeadlessBuilder_cleaning_all_projects);
-					root.getWorkspace().build(IncrementalProjectBuilder.CLEAN_BUILD, monitor);
-
-					// Reset the build_all_configs preference value to its previous state
-					ACBuilder.setAllConfigBuild(buildAllConfigs);
+					matchConfigurations(MATCH_ALL_CONFIGS, allProjects, configsToClean);
 				} else {
 					// Resolve the regular expression project names to build configurations
 					for (String regEx : projectRegExToClean)
-						matchConfigurations(regEx, allProjects, configsToBuild);
-					// Clean the list of configurations
-					buildConfigurations(configsToBuild, monitor, IncrementalProjectBuilder.CLEAN_BUILD);
+						matchConfigurations(regEx, allProjects, configsToClean);
 				}
+				// Clean the list of configurations
+				buildConfigurations(configsToClean, monitor, IncrementalProjectBuilder.CLEAN_BUILD);
 
 				// Build the projects the user wants building
 				if (buildAll) {
-					// Ensure we build all the configurations
-					ACBuilder.setAllConfigBuild(true);
-
 					System.out.println(HeadlessBuildMessages.HeadlessBuilder_building_all);
-					root.getWorkspace().build(IncrementalProjectBuilder.FULL_BUILD, monitor);
-					for(IProject p : root.getProjects())
-						buildSuccessful = buildSuccessful && isProjectSuccesfullyBuild(p);
+					matchConfigurations(MATCH_ALL_CONFIGS, allProjects, configsToBuild);
 				} else {
 					// Resolve the regular expression project names to build configurations
 					for (String regEx : projectRegExToBuild)
 						matchConfigurations(regEx, allProjects, configsToBuild);
-					// Build the list of configurations
-					buildConfigurations(configsToBuild, monitor, IncrementalProjectBuilder.FULL_BUILD);
-					for(IProject p : configsToBuild.keySet())
-						buildSuccessful = buildSuccessful && isProjectSuccesfullyBuild(p);
 				}
+				// Build the list of configurations
+				buildConfigurations(configsToBuild, monitor, IncrementalProjectBuilder.FULL_BUILD);
+				for(IProject p : root.getProjects())
+					buildSuccessful = buildSuccessful && isProjectSuccesfullyBuild(p);
 			} finally {
 				// Reset the tool options
-				if (!savedToolOptions.isEmpty())
+				if (!savedToolOptions.isEmpty()) {
 					for (IProject project : allProjects) {
 						IManagedBuildInfo info = ManagedBuildManager.getBuildInfo(project);
-						if (info == null)
-							continue;
-						IManagedProject mProj = info.getManagedProject();
-						IConfiguration[] cfgs = mProj.getConfigurations();
-						for (IConfiguration cfg : cfgs)
-							resetToolOptions(cfg);
-						ManagedBuildManager.saveBuildInfo(project, true);
+						if (info != null) {
+							IManagedProject mProj = info.getManagedProject();
+							if (mProj != null) {
+								IConfiguration[] cfgs = mProj.getConfigurations();
+								for (IConfiguration cfg : cfgs)
+									resetToolOptions(cfg);
+								ManagedBuildManager.saveBuildInfo(project, true);
+							}
+						}
 					}
-				// Reset the build_all_configs preference value to its previous state
-				ACBuilder.setAllConfigBuild(buildAllConfigs);
+				}
 				// Unhook the external settings provider
 				HeadlessBuilderExternalSettingsProvider.unhookExternalSettingsProvider();
 			}
+
+			// Now that builds are finished, dump all the Workspace markers
+			if (dumpMarkers || !buildSuccessful) {
+				collectMarkers();
+				dumpMarkers(System.out);
+			}
+			if (dumpMarkersToFile != null)
+				dumpMarkers(dumpMarkersToFile);
 		} finally {
 			// Wait for any outstanding jobs to finish
 			while (!Job.getJobManager().isIdle())
 				Thread.sleep(10);
 
+			System.out.println("End of build. Time taken: " + (System.currentTimeMillis() - start)+ "ms");
+
 			// Reset workspace auto-build preference
 			IWorkspaceDescription desc = root.getWorkspace().getDescription();
 			desc.setAutoBuilding(isAutoBuilding);
 			root.getWorkspace().setDescription(desc);
+			// Bug 347907 Do a full save on shutdown so the WS doesn't report unsaved changes on next startup
+			root.getWorkspace().save(true, null);
 		}
 
 		return buildSuccessful ? OK : ERROR;
+	}
+	
+	private void collectMarkers() {
+		try {
+			IMarker[] markers = ResourcesPlugin.getWorkspace().getRoot().findMarkers(IMarker.PROBLEM, true, IResource.DEPTH_INFINITE);
+			String[] attributes = new String[] {IMarker.LINE_NUMBER, IMarker.SEVERITY, IMarker.MESSAGE, IMarker.LOCATION, /*ICModelMarker.C_MODEL_MARKER_BUILT_PROJECT_NAME, ICModelMarker.C_MODEL_MARKER_CONFIGURATION_NAME*/};
+			StringBuilder sb = new StringBuilder();
+			for (IMarker m : markers) {
+				// Project
+				sb.append("\""); //$NON-NLS-1$
+				if (m.getResource().getProject() == null)
+					sb.append(HeadlessBuildMessages.HeadlessBuilder_Root);
+				else
+					sb.append(m.getResource().getProject().getName());
+				sb.append("\""); //$NON-NLS-1$				
+				// Resource workspace path
+				sb.append(",\""); //$NON-NLS-1$
+				sb.append(m.getResource().getFullPath());
+				sb.append("\""); //$NON-NLS-1$
+				Object[] attrs = m.getAttributes(attributes);
+				int i = 0;
+				// line number
+				sb.append(","); //$NON-NLS-1$
+				if (attrs[i] != null)
+					sb.append(attrs[i]);
+				// severity
+				sb.append(","); //$NON-NLS-1$
+				if (attrs[++i] != null) {
+					switch ((Integer)attrs[i++]) {
+					case IMarker.SEVERITY_ERROR:
+						sb.append(HeadlessBuildMessages.HeadlessBuilder_MARKER_ERROR);
+						break;
+					case IMarker.SEVERITY_WARNING:
+						sb.append(HeadlessBuildMessages.HeadlessBuilder_MARKER_WARNING);
+						break;
+					case IMarker.SEVERITY_INFO:
+						sb.append(HeadlessBuildMessages.HeadlessBuilder_MARKER_INFO);
+						break;
+					}
+				}
+//				// Fix up 'Built Project' name
+//				if (attrs[attributes.length - 2] == null)
+//					attrs[attributes.length - 2] = m.getResource().getProject().getName();
+				// append the rest of the string fields
+				do  {
+					sb.append(","); //$NON-NLS-1$
+					if (attrs[i] != null) {
+						sb.append("\""); //$NON-NLS-1$
+						sb.append(attrs[i]);
+						sb.append("\""); //$NON-NLS-1$
+					}
+				} while (++i < attrs.length);
+				// Finally print the string
+				this.markers.add(sb.toString());
+				sb.setLength(0);
+			}
+		} catch (CoreException e) {
+			System.err.println(HeadlessBuildMessages.HeadlessBuilder_Error_Getting_Marker + e.getMessage());
+		}
+	}
+
+	/** Dump the error and warning markers set in the workspace post-build to a file */
+	private void dumpMarkers(URI file) {
+		try {
+			IFileStore store = EFS.getStore(file);
+			PrintStream stream = new PrintStream(store.openOutputStream(EFS.OVERWRITE, null));
+			dumpMarkers(stream);
+			stream.flush();
+			stream.close();
+		} catch (CoreException e) {
+			ManagedBuilderCorePlugin.log(e);
+		}
+	}
+
+	/** Dump the error and warning markers set in the workspace post-build to a stream */
+	private void dumpMarkers(PrintStream stream) {
+		stream.println(HeadlessBuildMessages.HeadlessBuilder_Markers);
+		stream.println(HeadlessBuildMessages.HeadlessBuilder_Markers_Heading);
+		for (String s : markers)
+			stream.println(s);
 	}
 
     /**
@@ -564,18 +685,22 @@ public class HeadlessBuilder implements IApplication {
         return false;
     }
 
-
 	/**
 	 * Helper method to process expected arguments
 	 *
 	 * Arguments
 	 *   -import     {[uri:/]/path/to/project}
 	 *   -importAll  {[uri:/]/path/to/projectTreeURI} Import all projects in the tree
+	 *   -list       List the available project configuration in the workspace
 	 *   -build      {project_name_reg_ex/config_name_reg_ex | all}
+	 *   -clean      {project_name_reg_ex/config_name_reg_ex | all}
 	 *   -cleanBuild {project_name_reg_ex/config_name_reg_ex | all}
 	 *   -I          {include_path} additional include_path to add to tools
 	 *   -include    {include_file} additional include_file to pass to tools
 	 *   -D          {prepoc_define} addition preprocessor defines to pass to the tools
+	 *   -dumpMarkers
+	 *   -dumpMakersToFile {[uri:/]/path/to/file} dump markers to a file
+	 *   -stopOnError
   	 *   -E			 {var=value} replace/add value to environment variable when running all tools
 	 *   -Ea		 {var=value} append value to environment variable when running all tools
 	 *   -Ep		 {var=value} prepend value to environment variable when running all tools
@@ -584,6 +709,7 @@ public class HeadlessBuilder implements IApplication {
 	 *   -Ta         {toolid} {optionid=value} append to a tool option value
 	 *   -Tp         {toolid} {optionid=value} prepend to a tool option value
 	 *   -Tr         {toolid} {optionid=value} remove a tool option value
+     *   -Th         {configuration}  List available tools and options for the specified configuration
 	 *
 	 * Each argument may be specified more than once
 	 * @param args String[] of arguments to parse
@@ -598,10 +724,25 @@ public class HeadlessBuilder implements IApplication {
 					projectsToImport.add(args[++i]);
 				} else if ("-importAll".equals(args[i])) { //$NON-NLS-1$
 					projectTreeToImport.add(args[++i]);
+				} else if ("-list".equals(args[i])) { //$NON-NLS-1$
+					System.out.println("Projects/Configurations in the workspace");
+					for (IProject project : ResourcesPlugin.getWorkspace().getRoot().getProjects())
+						for (ICConfigurationDescription desc : CProjectDescriptionManager.getInstance().getProjectDescription(project, false).getConfigurations())
+							System.out.println(project.getName()+"/"+desc.getName());
 				} else if ("-build".equals(args[i])) { //$NON-NLS-1$
 					projectRegExToBuild.add(args[++i]);
 				} else if ("-cleanBuild".equals(args[i])) { //$NON-NLS-1$
+					String arg = args[++i];
+					projectRegExToClean.add(arg);
+					projectRegExToBuild.add(arg);
+				} else if ("-cleanNoBuild".equals(args[i])) { //$NON-NLS-1$
 					projectRegExToClean.add(args[++i]);
+				} else if ("-dumpMarkers".equals(args[i])) { //$NON-NLS-1$
+					dumpMarkers = true;
+				} else if ("-dumpMarkersToFile".equals(args[i])) { //$NON-NLS-1$
+					dumpMarkersToFile = createURI(args[++i]);
+				} else if ("-stopOnError".equals(args[i])) { //$NON-NLS-1$
+					stopOnError = true;
 				} else if ("-D".equals(args[i])) { //$NON-NLS-1$
 					String macro = args[++i];
 					String macroVal = ""; //$NON-NLS-1$
@@ -638,6 +779,23 @@ public class HeadlessBuilder implements IApplication {
 					String toolId = args[++i];
 					String option = args[++i];
 					addToolOption(toolId, option, ToolOption.REMOVE);
+				} else if ("-Th".equals(args[i])) { //$NON-NLS-1$
+					String config = args[++i];
+					Map<IProject, Set<ICConfigurationDescription>> cfgMap = new HashMap<IProject, Set<ICConfigurationDescription>>();
+					matchConfigurations(config, ResourcesPlugin.getWorkspace().getRoot().getProjects(), cfgMap);
+					if (cfgMap.isEmpty())
+						throw new Exception("No configurations found matching: " + config);
+					for (Set<ICConfigurationDescription> descs : cfgMap.values())
+						for (ICConfigurationDescription desc : descs)
+							printAllToolOptions(desc);
+					return false;
+				} else if ("-noRefresh".equals(args[i])) { //$NON-NLS-1$
+					no_refresh = true;
+				} else if (args[i].matches("-j[0-9]+")) {
+					Pattern p = Pattern.compile("-j([0-9]+)");
+					Matcher m = p.matcher(args[i]);
+					m.matches();
+					parallelJobs = Integer.valueOf(m.group(1));
 				} else {
 					throw new Exception(HeadlessBuildMessages.HeadlessBuilder_unknown_argument + args[i]);
 				}
@@ -649,11 +807,18 @@ public class HeadlessBuilder implements IApplication {
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_usage);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_usage_import);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_importAll);
+			System.err.println("   -list        project configs available in the workspace"); 
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_usage_build);
+			System.err.println("   -cleanNoBuild      {project_name_reg_ex{/config_reg_ex} | all} Clean the project without rebuilding it.");
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_usage_clean_build);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_InlucdePath);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_IncludeFile);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_PreprocessorDefine);
+			System.err.println(HeadlessBuildMessages.HeadlessBuilder_usage_dumpMarkers);
+			System.err.println(HeadlessBuildMessages.HeadlessBuilder_DumpMarkersToFile);
+			System.err.println(HeadlessBuildMessages.HeadlessBuilder_stopOnError);
+			System.err.println("   -noRefresh    disable refresh on startup");
+			System.err.println("   -jN           parallel build factor N");
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_EnvVar_Replace);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_EnvVar_Append);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_EnvVar_Prepend);
@@ -663,12 +828,12 @@ public class HeadlessBuilder implements IApplication {
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_ToolOption_Prepend);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_ToolOption_Remove);
 			System.err.println(HeadlessBuildMessages.HeadlessBuilder_ToolOption_Types);
+			System.err.println("   -Th {config} - List tools and available options on the specified configuration"); 
 			return false;
 		}
 
 		if (projectRegExToClean.contains("all") || projectRegExToClean.contains("*")) { //$NON-NLS-1$ //$NON-NLS-2$
 			cleanAll = true;
-			buildAll = true;
 			projectRegExToClean.remove("all"); //$NON-NLS-1$
 			projectRegExToClean.remove("*"); //$NON-NLS-1$
 		}
@@ -698,6 +863,53 @@ public class HeadlessBuilder implements IApplication {
 			optionId = option.substring(0, option.indexOf('='));
 		}
 		toolOptions.add(new ToolOption(toolId, optionId, value, operation));
+	}
+
+	private void printAllToolOptions(ICConfigurationDescription cfgD) throws BuildException {
+		IConfiguration configuration = ManagedBuildManager.getConfigurationForDescription(cfgD);
+		System.out.println("Tools + Options for: " + cfgD.getProjectDescription().getProject().getName() + "/" + cfgD.getName());
+		for (ITool tool : configuration.getTools()) {
+			System.out.println(tool.getName() + ": " + tool.getSuperClass().getId());
+			for (IOption option : tool.getOptions()) {
+				System.out.print("  " + (option.getSuperClass() != null ? option.getSuperClass().getId(): option.getId()) + " : " + option.getName());
+				switch (option.getValueType()) {
+				case IOption.BOOLEAN:
+					System.out.println("    Value-type: Boolean: {true|false}");
+					break;
+				case IOption.STRING_LIST:
+				case IOption.INCLUDE_PATH:
+				case IOption.PREPROCESSOR_SYMBOLS:
+				case IOption.LIBRARIES:
+				case IOption.OBJECTS:
+				case IOption.INCLUDE_FILES:
+				case IOption.LIBRARY_PATHS:
+				case IOption.LIBRARY_FILES:
+				case IOption.MACRO_FILES:
+				case IOption.UNDEF_INCLUDE_PATH:
+				case IOption.UNDEF_PREPROCESSOR_SYMBOLS:
+				case IOption.UNDEF_INCLUDE_FILES:
+				case IOption.UNDEF_LIBRARY_PATHS:
+				case IOption.UNDEF_LIBRARY_FILES:
+				case IOption.UNDEF_MACRO_FILES:
+					System.out.println("    Value-type: String-list: {String,...}");					
+					break;
+				case IOption.ENUMERATED:
+					System.out.println("    Value-type: Enum: "); 
+					String[] names = option.getApplicableValues();
+					String[] values = new String[names.length];
+					System.out.println("      " + Arrays.toString(names));
+					for (int i = 0; i < names.length; i++)
+						values[i] = option.getEnumeratedId(names[i]);
+					System.out.println("      " + Arrays.toString(values));
+					break;
+				case IOption.STRING:
+					System.out.println("    Value-type: String: {string}");
+					break;
+				default: // IOption.ENUMERATED, IOption.STRING
+					System.out.println("    Value-type: <unknown>");
+			}
+			}
+		}
 	}
 
 	/**
@@ -790,6 +1002,38 @@ public class HeadlessBuilder implements IApplication {
 			IOption option = configuration.getTool(toolOption.toolId).getOptionById(toolOption.optionId);
 			option.setValue(toolOption.value);
 		}
+	}
+
+	/**
+	 * Create a URI from a URI string, absolute file path or file path relative to cwd
+	 * @throws IllegalArgumentException if the supplied string cannot be used to create a valid URI
+	 */
+	private URI createURI(String uriString) {
+		URI uri = null;
+		try {
+			uri = new URI(uriString);
+		} catch (URISyntaxException e) {
+			// Will be treated as straightforward path in the case below
+		}
+
+		// Handle local paths as well
+		if (uri == null || uri.getScheme() == null) {
+			IPath path = new Path(uriString).addTrailingSeparator();
+			uri = URIUtil.toURI(path);
+
+			// Handle relative paths as relative to cwd
+			if (uri.getScheme() == null) {
+				String cwd = System.getProperty("user.dir");  //$NON-NLS-1$
+				path = new Path(cwd).addTrailingSeparator();
+				path = path.append(uriString);
+				uri = URIUtil.toURI(path);
+			}
+			if (uri.getScheme() == null) {
+				System.err.println(HeadlessBuildMessages.HeadlessBuilder_invalid_uri + uri);
+				throw new IllegalArgumentException();
+			}
+		}
+		return uri;
 	}
 
 	public void stop() {
