@@ -9,7 +9,8 @@
    <extension-point id="foldingStructureProviders" name="%foldingStructureProvidersExtensionPoint" schema="schema/foldingStructureProviders.exsd"/>
    <extension-point id="cPropertyTab" name="%cPropertyTabName" schema="schema/cPropertyTab.exsd"/>
    <extension-point id="CDTWizard" name="%CDTWizard" schema="schema/CDTWizard.exsd"/>
-   
+   <extension-point id="CommandLauncherDialog" name="%CommandLauncherDialog.name" schema="schema/CommandLauncherDialog.exsd"/>
+
 <!-- =========================================================================== -->
 <!-- Extension point: org.eclipse.cdt.ui.textHovers                        -->
 <!-- Extension Implementation: must implement org.eclipse.jface.text.ITextHover  -->
@@ -789,6 +790,12 @@
             category="org.eclipse.cdt.ui.preferences.CPluginPreferencePage"
             id="org.eclipse.cdt.core.templateengine.shareddefaults">
           <keywordReference id="org.eclipse.cdt.ui.common"/>
+      </page>
+      <page
+            category="org.eclipse.cdt.ui.preferences.CPluginPreferencePage"
+            class="org.eclipse.cdt.internal.ui.preferences.CommandLauncherPreferencePage"
+            id="org.eclipse.cdt.ui.preferences.CommandLauncherPreferencePage"
+            name="%CommandLauncherPreferencePage.name">
       </page>
    </extension>
 
@@ -2857,6 +2864,17 @@
          </enabledWhen>
       </page>
       <page
+            category="org.eclipse.cdt.ui.newui.Page_head_general"
+            class="org.eclipse.cdt.internal.ui.preferences.CommandLauncherPreferencePage"
+            id="org.eclipse.cdt.ui.propertyPages.CommandLauncherPreferencePage"
+            name="Command Launcher">
+         <enabledWhen>
+            <adapt
+                  type="org.eclipse.core.resources.IProject">
+            </adapt>
+         </enabledWhen>
+      </page>
+      <page
             name="%BuildLoggingPreferencePage.name"
             id="org.eclipse.cdt.managedbuilder.ui.properties.BuildLogPreferencePage"
             class="org.eclipse.cdt.internal.ui.preferences.BuildLogPreferencePage"
@@ -3687,6 +3705,21 @@
             class="org.eclipse.cdt.internal.ui.refactoring.extractfunction.ExtractFunctionRefactoringContribution"
             id="org.eclipse.cdt.internal.ui.refactoring.extractfunction.ExtractFunctionRefactoring">
       </contribution>
+   </extension>
+
+   <extension
+         point="org.eclipse.cdt.ui.CommandLauncherDialog">
+      <CommandLauncherDialog
+            class="org.eclipse.cdt.internal.ui.dialogs.WrappedCommandLauncherDialog"
+            id="org.eclipse.cdt.core.commandlauncher.wrapped">
+      </CommandLauncherDialog>
+   </extension>
+   <extension
+         point="org.eclipse.ui.commands">
+      <command
+            id="org.eclipse.cdt.ui.command1"
+            name="name">
+      </command>
    </extension>
 	<extension point="org.eclipse.ltk.core.refactoring.renameParticipants">
 		<renameParticipant id="org.eclipse.jdt.junit.renameTypeParticipant"

@@ -26,6 +26,7 @@ import java.util.Map.Entry;
 
 import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.CommandLauncher;
+import org.eclipse.cdt.core.CommandLauncherFactory;
 import org.eclipse.cdt.core.ErrorParserManager;
 import org.eclipse.cdt.core.ICommandLauncher;
 import org.eclipse.cdt.core.model.ICModelMarker;
@@ -178,8 +179,7 @@ public class MakeBuilder extends ACBuilder {
 					isClean = true;
 
 				String errMsg = null;
-				ICommandLauncher launcher = new CommandLauncher();
-				launcher.setProject(currProject);
+				ICommandLauncher launcher = CommandLauncherFactory.createCommandLauncher(currProject, CommandLauncherFactory.PROCESS_TYPE_BUILD_STANDARD, this);
 				// Print the command for visual interaction.
 				launcher.showCommand(true);
 

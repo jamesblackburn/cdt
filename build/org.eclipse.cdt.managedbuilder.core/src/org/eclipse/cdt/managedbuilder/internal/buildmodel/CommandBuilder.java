@@ -7,6 +7,7 @@
  *
  * Contributors:
  * Intel Corporation - Initial API and implementation
+ * James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.managedbuilder.internal.buildmodel;
 
@@ -20,8 +21,10 @@ import java.util.Map.Entry;
 import java.util.Set;
 
 import org.eclipse.cdt.core.CommandLauncher;
+import org.eclipse.cdt.core.CommandLauncherFactory;
 import org.eclipse.cdt.core.ICommandLauncher;
 import org.eclipse.cdt.managedbuilder.buildmodel.IBuildCommand;
+import org.eclipse.cdt.managedbuilder.buildmodel.IBuildDescription;
 import org.eclipse.cdt.managedbuilder.internal.core.ManagedMakeMessages;
 import org.eclipse.cdt.utils.PathUtil;
 import org.eclipse.core.runtime.CoreException;
@@ -50,6 +53,7 @@ public class CommandBuilder implements IBuildModelBuilder {
 	private IBuildCommand fCmd;
 	private Process fProcess;
 	private String fErrMsg;
+	private final IBuildDescription fBuildDesc;
 	
 	private static final String BUILDER_MSG_HEADER = "InternalBuilder.msg.header"; //$NON-NLS-1$ 
 	private static final String NEWLINE = System.getProperty("line.separator", "\n"); //$NON-NLS-1$ //$NON-NLS-2$ 
@@ -147,10 +151,11 @@ public class CommandBuilder implements IBuildModelBuilder {
 
 	}
 
-	public CommandBuilder(IBuildCommand cmd, IResourceRebuildStateContainer cr){
+	public CommandBuilder(IBuildCommand cmd, IResourceRebuildStateContainer cr, IBuildDescription buildDesc) {
 		fCmd = cmd;
+		fBuildDesc = buildDesc;
 	}
-	
+
 	protected OutputStream wrap(OutputStream out){
 		return new OutputStreamWrapper(out);
 	}
@@ -173,9 +178,7 @@ public class CommandBuilder implements IBuildModelBuilder {
 		try {
 			fProcess = launcher.execute(fCmd.getCommand(), fCmd.getArgs(), mapToStringArray(fCmd.getEnvironment()), fCmd.getCWD(), monitor);
 		} catch (CoreException e1) {
-			// TODO Auto-generated catch block
-			if(DbgUtil.DEBUG)
-				DbgUtil.trace("Error launching command: " + e1.getMessage());	//$NON-NLS-1$
+			printMessage("Error launching command: " + e1.getMessage(), out);
 			monitor.done();
 			return STATUS_ERROR_LAUNCH;
 		}
@@ -230,13 +233,12 @@ public class CommandBuilder implements IBuildModelBuilder {
 		monitor.done();
 		return status;
 	}
-	
+
 	protected ICommandLauncher createLauncher() {
-//		if(isWindows())
-//			return new CommandLauncher();
-		return new CommandSearchLauncher();
+		return CommandLauncherFactory.createCommandLauncher(
+				fBuildDesc.getConfiguration().getOwner().getProject(), CommandLauncherFactory.PROCESS_TYPE_BUILD_MANAGED, fBuildDesc);
 	}
-	
+
 	public String getErrMsg(){
 		return fErrMsg;
 	}

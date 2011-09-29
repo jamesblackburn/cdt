@@ -25,7 +25,7 @@ import java.util.SortedMap;
 import java.util.StringTokenizer;
 
 import org.eclipse.cdt.core.CCorePlugin;
-import org.eclipse.cdt.core.CommandLauncher;
+import org.eclipse.cdt.core.CommandLauncherFactory;
 import org.eclipse.cdt.core.ErrorParserManager;
 import org.eclipse.cdt.core.ICommandLauncher;
 import org.eclipse.cdt.core.cdtvariables.CdtVariableException;
@@ -65,6 +65,7 @@ import org.eclipse.cdt.managedbuilder.makegen.IManagedBuilderMakefileGenerator;
 import org.eclipse.cdt.managedbuilder.makegen.IManagedBuilderMakefileGenerator2;
 import org.eclipse.cdt.managedbuilder.makegen.gnu.GnuMakefileGenerator;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IConfigurationElement;
@@ -2638,6 +2639,15 @@ public class Builder extends HoldsOptions implements IBuilder, IMatchKeyProvider
 		return getUniqueRealName();
 	}
 
+	private IProject getProject() {
+		if (getParent() == null || getParent().getParent() == null)
+			return null;
+		IResource res = getParent().getParent().getOwner();
+		if (res != null)
+			return res.getProject();
+		return null;
+	}
+
 	public ICommandLauncher getCommandLauncher() {
 		if(fCommandLauncher != null)
 			return fCommandLauncher;
@@ -2651,11 +2661,13 @@ public class Builder extends HoldsOptions implements IBuilder, IMatchKeyProvider
 			}
 		}
 		if(fCommandLauncher == null && superClass != null)
-			return getSuperClass().getCommandLauncher();
-		
-		else if(fCommandLauncher == null) // catch all for backwards compatibility
-			fCommandLauncher = new CommandLauncher();
-		
+			fCommandLauncher = getSuperClass().getCommandLauncher();
+
+		if(fCommandLauncher == null && getProject() != null) 
+			// only generate a CommandLauncher if this is a Project level builder
+			// && don't cache this command launcher as the user may change his preferences
+			return CommandLauncherFactory.createCommandLauncher(getProject(), CommandLauncherFactory.PROCESS_TYPE_BUILD_MANAGED, this);
+
 		return fCommandLauncher;
 	}
 

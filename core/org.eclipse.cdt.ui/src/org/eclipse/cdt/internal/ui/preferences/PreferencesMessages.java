@@ -449,7 +449,12 @@ public final class PreferencesMessages extends NLS {
 	public static String ScalabilityPreferencePage_note;
 	public static String ScalabilityPreferencePage_preferenceOnlyForNewEditors;
 	public static String ScalabilityPreferencePage_contentAssist_autoActivation;
-	
+
+	public static String CommandLauncherPreferencePage_Advanced;
+	public static String CommandLauncherPreferencePage_CommandLauncher;
+	public static String CommandLauncherPreferencePage_CustomCommandLaunchers;
+	public static String CommandLauncherPreferencePage_CustomiseCommandRunning;
+
 	private PreferencesMessages() {
 		// Do not instantiate
 	}

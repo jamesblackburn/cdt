@@ -64,12 +64,28 @@ import org.eclipse.cdt.internal.ui.dialogs.IStatusChangeListener;
 public abstract class OptionsConfigurationBlock {
 
 	public static final class Key {
-		private String fQualifier;
-		private String fKey;
 
+		private final String fQualifier;
+		private final String fKey;
+		private final String fDefault;
+
+		/**
+		 * @param qualifier Node qualifier
+		 * @param key key
+		 */
 		public Key(String qualifier, String key) {
+			this(qualifier, key, null);
+		}
+
+		/**
+		 * @param qualifier Node qualifier
+		 * @param key key
+		 * @param defaultValue default to use if the Key isn't resolved
+		 */
+		public Key(String qualifier, String key, String defaultValue) {
 			fQualifier= qualifier;
 			fKey= key;
+			fDefault = defaultValue;
 		}
 
 		public String getName() {
@@ -95,7 +111,7 @@ public abstract class OptionsConfigurationBlock {
 					return value;
 				}
 			}
-			return null;
+			return fDefault;
 		}
 
 		public void setStoredValue(IScopeContext context, String value, IWorkingCopyManager manager) {
@@ -142,11 +158,9 @@ public abstract class OptionsConfigurationBlock {
 		}
 
 		public int getSelection(String value) {
-			if (value != null) {
-				for (int i= 0; i < fValues.length; i++) {
-					if (value.equals(fValues[i])) {
-						return i;
-					}
+			for (int i= 0; i < fValues.length; i++) {
+				if (fValues[i] == value || (value != null && value.equals(fValues[i]))) {
+					return i;
 				}
 			}
 			return fValues.length -1; // assume the last option is the least severe
@@ -181,12 +195,34 @@ public abstract class OptionsConfigurationBlock {
 
 	private int fRebuildCount; // used to prevent multiple dialogs that ask for a rebuild
 
-	public OptionsConfigurationBlock(IStatusChangeListener context, IProject project, Key[] allKeys,
+	/** Control whether preference keys are allowed to be unset */
+	private final boolean fAllowNullKeyValues;
+
+	/**
+	 * Equivalent to {@link OptionsConfigurationBlock#OptionsConfigurationBlock(IStatusChangeListener, IProject, Key[], false, IWorkbenchPreferenceContainer)}
+	 * @param context status change listener to be notified when the dialog's status changes
+	 * @param project project associated with this property page, or null
+	 * @param allKeys preference {@link Key}[]
+	 * @param container
+	 */
+	public OptionsConfigurationBlock(IStatusChangeListener context, IProject project, Key[] allKeys, IWorkbenchPreferenceContainer container) {
+		this(context, project, allKeys, false, container);
+	}
+
+	/**
+	 * @param context status change listener to be notified when the dialog's status changes
+	 * @param project project associated with this property page, or null
+	 * @param allKeys preference {@link Key}[]
+	 * @param allowNullKeyValues should we report and error if some preference values are unset
+	 * @param container
+	 */
+	public OptionsConfigurationBlock(IStatusChangeListener context, IProject project, Key[] allKeys, boolean allowNullKeyValues, 
 			IWorkbenchPreferenceContainer container) {
 		fContext= context;
 		fProject= project;
 		fAllKeys= allKeys;
 		fContainer= container;
+		fAllowNullKeyValues = allowNullKeyValues;
 		if (container == null) {
 			fManager= new WorkingCopyManager();
 		} else {
@@ -246,7 +282,7 @@ public abstract class OptionsConfigurationBlock {
 
 	private void checkIfOptionsComplete(Key[] allKeys) {
 		for (int i= 0; i < allKeys.length; i++) {
-			if (allKeys[i].getStoredValue(fLookupOrder, false, fManager) == null) {
+			if (!fAllowNullKeyValues && allKeys[i].getStoredValue(fLookupOrder, false, fManager) == null) {
 				CUIPlugin.logError("Preference option missing: " + allKeys[i] + " (" + this.getClass().getName() +')');  //$NON-NLS-1$//$NON-NLS-2$
 			}
 		}
@@ -616,6 +652,12 @@ public abstract class OptionsConfigurationBlock {
 		return Boolean.valueOf(getValue(key)).booleanValue();
 	}
 
+	/**
+	 * Set the String value of Key
+	 * @param key Key to set the value on
+	 * @param value String value to persist, 'null' removes the key from the pref store altogether
+	 * @return old value
+	 */
 	protected String setValue(Key key, String value) {
 		if (fDisabledProjectSettings != null) {
 			return fDisabledProjectSettings.put(key, value);
@@ -632,7 +674,7 @@ public abstract class OptionsConfigurationBlock {
 	/**
 	 * Returns the value as actually stored in the preference store.
 	 * @param key
-	 * @return the value as actually stored in the preference store.
+	 * @return the value as actually stored in the preference store, or null if one isn't found
 	 */
 	protected String getStoredValue(Key key) {
 		return key.getStoredValue(fLookupOrder, false, fManager);

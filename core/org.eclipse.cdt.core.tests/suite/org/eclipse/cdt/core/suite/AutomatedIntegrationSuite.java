@@ -15,6 +15,7 @@ package org.eclipse.cdt.core.suite;
 import junit.framework.Test;
 import junit.framework.TestSuite;
 
+import org.eclipse.cdt.core.CommandLauncherFactoryTests;
 import org.eclipse.cdt.core.cdescriptor.tests.CDescriptorOldTests;
 import org.eclipse.cdt.core.cdescriptor.tests.CDescriptorTests;
 import org.eclipse.cdt.core.envvar.IEnvironmentVariableManagerTests;
@@ -78,6 +79,9 @@ public class AutomatedIntegrationSuite extends TestSuite {
 		suite.addTest(CommandLineUtilTest.suite());
 		suite.addTest(FindProgramLocationTest.suite());
 		suite.addTest(EFSExtensionTests.suite());
+
+		// Add core tests
+		suite.addTestSuite(CommandLauncherFactoryTests.class);
 
 		// Add in PDOM tests
 		suite.addTest(PDOMTests.suite());

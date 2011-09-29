@@ -223,7 +223,7 @@ public class StepBuilder implements IBuildModelBuilder {
 			else {
 				fCommandBuilders = new CommandBuilder[cmds.length];
 				for(int i = 0; i < cmds.length; i++){
-					fCommandBuilders[i] = new CommandBuilder(cmds[i], fRebuildStateContainer);
+					fCommandBuilders[i] = new CommandBuilder(cmds[i], fRebuildStateContainer, fStep.getBuildDescription());
 				}
 			}
 		}
