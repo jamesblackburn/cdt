@@ -1215,6 +1215,39 @@
 			  name="%OptionCategory.Misc"
 			  id="gnu.c.compiler.category.other">
 		  </optionCategory>
+            <option
+                category="gnu.c.compiler.category.other"
+                id="gnu.c.compiler.option.misc.std"
+                isAbstract="false"
+                name="Lang. Standard"
+                resourceFilter="all"
+                valueType="enumerated">
+               <enumeratedOptionValue
+                     id="gnu.c.compiler.option.misc.std.default"
+                     isDefault="true"
+                     name="&lt;default&gt;">
+               </enumeratedOptionValue>
+             <enumeratedOptionValue
+                   command="-std=gnu99"
+                   id="gnu.c.compiler.option.misc.std.gnu99"
+                   name="gnu99">
+             </enumeratedOptionValue>
+             <enumeratedOptionValue
+                   command="-std=c99"
+                   id="gnu.c.compiler.option.misc.std.c99"
+                   name="c99">
+             </enumeratedOptionValue>
+             <enumeratedOptionValue
+                   command="-std=gnu89"
+                   id="gnu.c.compiler.option.misc.std.gnu89"
+                   name="gnu89">
+             </enumeratedOptionValue>
+             <enumeratedOptionValue
+                   command="-std=c89"
+                   id="gnu.c.compiler.option.misc.std.c89"
+                   name="c89">
+             </enumeratedOptionValue>
+          </option>
 		  <option
 			  defaultValue="-c -fmessage-length=0"
 			  name="%Option.OtherFlags"
