@@ -24,7 +24,9 @@ import java.util.Map;
 import java.util.Set;
 
 import org.eclipse.cdt.core.CCorePlugin;
+import org.eclipse.cdt.core.CommandLauncher;
 import org.eclipse.cdt.core.ConsoleOutputStream;
+import org.eclipse.cdt.core.ICommandLauncher;
 import org.eclipse.cdt.core.ProblemMarkerInfo;
 import org.eclipse.cdt.core.model.CoreModel;
 import org.eclipse.cdt.core.resources.ACBuilder;
@@ -741,6 +743,13 @@ public class CommonBuilder extends ACBuilder {
 
 			if(status.isBuild()){
 				try {
+				// Set command launcher context
+				CommandLauncher launcher = (CommandLauncher)builder.getCommandLauncher();
+				launcher.setContext(new Object[] {bInfo, Integer.valueOf(kind)});
+				launcher.setProject(bInfo.getProject());
+				// Print the command for visual interaction.
+				launcher.showCommand(true);
+
 				boolean isClean = builder.getBuildRunner().invokeBuild(
 						kind,
 						bInfo.getProject(),
@@ -1064,6 +1073,13 @@ public class CommonBuilder extends ACBuilder {
 				pbs.removeConfigurationBuildState(cfg.getId());
 				bsMngr.setProjectBuildState(project, pbs);
 			}
+
+			// Set command launcher context
+			CommandLauncher launcher = (CommandLauncher)bInfo.getBuilder().getCommandLauncher();
+			launcher.setContext(new Object[] {bInfo, Integer.valueOf(CLEAN_BUILD)});
+			launcher.setProject(bInfo.getProject());
+			// Print the command for visual interaction.
+			launcher.showCommand(true);
 
 			if(!cfg.getEditableBuilder().isManagedBuildOn()){
 				performExternalClean(bInfo, false, monitor);
