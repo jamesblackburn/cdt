@@ -222,7 +222,13 @@ public class ArtifactTab extends AbstractCBuildPropertyTab {
 	
 	@Override
 	protected void performDefaults() {
-		fCfg.setArtifactName(fCfg.getManagedProject().getDefaultArtifactName());
+		if (fCfg instanceof ICMultiItemsHolder<?>)
+			for (Object o : ((ICMultiItemsHolder<?>)fCfg).getItems()) {
+				IConfiguration cfg = (IConfiguration)o;
+				cfg.setArtifactName(cfg.getManagedProject().getDefaultArtifactName());
+			}
+		else
+			fCfg.setArtifactName(fCfg.getManagedProject().getDefaultArtifactName());
 		fCfg.setArtifactExtension(null);
 		// workaround for bad extension setting (always "exe"):
 		// set wrong project type temporary 

@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2002, 2009 IBM Corporation and others.
+ * Copyright (c) 2002, 2010 IBM Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -7,6 +7,7 @@
  *
  * Contributors:
  * IBM Rational Software - Initial API and implementation
+ * James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui.newui;
 
@@ -85,11 +86,11 @@ public class ConfigMultiSelectionDialog extends Dialog {
 		Composite composite = new Composite(parent, SWT.NULL);
 		composite.setFont(parent.getFont());
 		composite.setLayout(new GridLayout(1, true));
-		composite.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
+		composite.setLayoutData(new GridData(GridData.FILL_BOTH));
 	
 		// Create the current config table
 		table = new Table(composite, SWT.CHECK | SWT.BORDER | SWT.SINGLE | SWT.V_SCROLL | SWT.H_SCROLL | SWT.FULL_SELECTION);
-		table.setLayoutData(new GridData(GridData.FILL));
+		table.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
 		table.setHeaderVisible(true);
 		table.setLinesVisible(true);
 		
@@ -97,10 +98,16 @@ public class ConfigMultiSelectionDialog extends Dialog {
 		message.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 		message.setText(Messages.ConfigMultiSelectionDialog_1); 
 		message.setForeground(composite.getDisplay().getSystemColor(SWT.COLOR_RED));
-		
+
+		// Project column
 		TableColumn col = new TableColumn(table, SWT.NONE);
+		col.setText(Messages.ConfigMultiSelectionDialog_Project);
+		col.setWidth(120);
+		// Configuration Name column
+		col = new TableColumn(table, SWT.NONE);
 		col.setText(Messages.ManageConfigDialog_1); 
 		col.setWidth(100);
+		// Configuration Description Column
 		col = new TableColumn(table, SWT.NONE);
 		col.setText(Messages.ManageConfigDialog_2); 
 		col.setWidth(120);
@@ -132,13 +139,19 @@ public class ConfigMultiSelectionDialog extends Dialog {
 
 			public String getColumnText(Object element, int index) {
 				ICConfigurationDescription cfg = (ICConfigurationDescription)element;
-				if (index == 0) return cfg.getName();
-				if (index == 1) return cfg.getDescription();
+				if (index == 0) return cfg.getProjectDescription().getProject().getName();
+				if (index == 1) return cfg.getName();
+				if (index == 2) return cfg.getDescription();
 				return AbstractPage.EMPTY_STR;
 			}});
 		tv.setInput(cfgds);
 		table.setFocus();
 		return composite;
+	}
+
+	@Override
+	protected boolean isResizable() {
+		return true;
 	}
 
 	/**

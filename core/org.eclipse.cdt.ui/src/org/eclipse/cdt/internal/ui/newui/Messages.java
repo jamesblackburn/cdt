@@ -107,6 +107,7 @@ public class Messages extends NLS {
 	public static String ConfigDescriptionTab_2;
 	public static String ConfigMultiSelectionDialog_0;
 	public static String ConfigMultiSelectionDialog_1;
+	public static String ConfigMultiSelectionDialog_Project;
 	public static String CProjectWizard_0;
 	public static String EnvDialog_0;
 	public static String EnvDialog_1;

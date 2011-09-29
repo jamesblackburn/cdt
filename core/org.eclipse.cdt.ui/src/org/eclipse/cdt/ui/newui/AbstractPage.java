@@ -21,13 +21,13 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
-import org.eclipse.core.resources.IFile;
-import org.eclipse.core.resources.IFolder;
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.resources.ResourcesPlugin;
@@ -75,33 +75,43 @@ import org.eclipse.swt.widgets.TabItem;
 import org.eclipse.swt.widgets.Text;
 import org.eclipse.ui.IWorkbenchPart;
 import org.eclipse.ui.IWorkbenchPartReference;
+import org.eclipse.ui.IWorkbenchPropertyPageMulti;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.actions.WorkspaceModifyDelegatingOperation;
 import org.eclipse.ui.dialogs.PropertyPage;
 
 import org.eclipse.cdt.core.CCorePlugin;
 import org.eclipse.cdt.core.model.CoreModel;
-import org.eclipse.cdt.core.model.ICElement;
 import org.eclipse.cdt.core.model.ICProject;
 import org.eclipse.cdt.core.model.util.CDTListComparator;
 import org.eclipse.cdt.core.settings.model.CConfigurationStatus;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
+import org.eclipse.cdt.core.settings.model.ICFileDescription;
 import org.eclipse.cdt.core.settings.model.ICFolderDescription;
+import org.eclipse.cdt.core.settings.model.ICLanguageSetting;
+import org.eclipse.cdt.core.settings.model.ICMultiFolderDescription;
 import org.eclipse.cdt.core.settings.model.ICMultiItemsHolder;
+import org.eclipse.cdt.core.settings.model.ICMultiProjectDescription;
+import org.eclipse.cdt.core.settings.model.ICMultiResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
+import org.eclipse.cdt.core.settings.model.ICSettingContainer;
+import org.eclipse.cdt.core.settings.model.ICSettingObject;
 import org.eclipse.cdt.core.settings.model.MultiItemsHolder;
+import org.eclipse.cdt.core.settings.model.WriteAccessException;
 import org.eclipse.cdt.ui.CDTSharedImages;
 import org.eclipse.cdt.ui.CUIPlugin;
 import org.eclipse.cdt.ui.PreferenceConstants;
 import org.eclipse.cdt.utils.ui.controls.ControlFactory;
 
+import org.eclipse.cdt.internal.core.settings.model.MultiFileDescription;
+import org.eclipse.cdt.internal.core.settings.model.MultiFolderDescription;
+
 import org.eclipse.cdt.internal.ui.dialogs.OptionalMessageDialog;
 import org.eclipse.cdt.internal.ui.newui.Messages;
 
 /**
- * It is a parent for all standard CDT property pages
- * in new CDT model. 
+ * It is a parent for all standard CDT property pages in new CDT model. 
  * 
  * Although it is enough for new page to implement
  * "IWorkbenchPropertyPage" interface, it would be
@@ -118,13 +128,14 @@ import org.eclipse.cdt.internal.ui.newui.Messages;
  * It it returns false, current page can contain multiple tabs
  * (obtained through "cPropertyTab" extension point).
  * If it returns true, only one content tab is possible. If
- * more than 1 tabs refer to this pas as a parent, only 1st
+ * more than 1 tabs refer to this page as a parent, only 1st
  * one would be taken into account, others will be ignored. 
  */
 public abstract class AbstractPage extends PropertyPage 
 implements
 		IPreferencePageContainer, // dynamic pages
-		ICPropertyProvider // utility methods for tabs
+		ICPropertyProvider, // utility methods for tabs
+		IWorkbenchPropertyPageMulti
 {
 	private static ICResourceDescription resd = null;
 	private static ICConfigurationDescription[] cfgDescs = null;
@@ -144,8 +155,11 @@ implements
 	private static final Object NOT_NULL = new Object();
 	public static final String EMPTY_STR = "";  //$NON-NLS-1$
 	
+	/** MODE_OK calls OK on the ICPropertyTabs, saving the shared writable project description (held by CDTPropertyManager) */
 	private static final int SAVE_MODE_OK = 1;
+	/** MODE_APPLY calls APPLY on the ICPropertyTabs to apply changes into a new project description */
 	private static final int SAVE_MODE_APPLY = 2;
+	/** MODE_APPLYOK behaves like APPLY ; ICPropertyTabs apply changes into a new project description */
 	private static final int SAVE_MODE_APPLYOK = 3;
 	
 	private static final String PREF_ASK_REINDEX = "askReindex"; //$NON-NLS-1$
@@ -168,7 +182,16 @@ implements
 	 */
 	protected boolean noContentOnPage = false;
 	protected boolean displayedConfig = false;
+	/** @deprecated - use {@link #getElements()} or {@link #getElement()} instead */
+	@Deprecated
 	protected IResource internalElement = null;
+	/** The actual IAdaptable elements set on this Page */
+	private IAdaptable[] elements = new IAdaptable[0];
+	/** IResource[] of resources we're editing properties of
+	 *  created from the IAdaptable elements above during #checkElement */
+	private IResource[] resources = new IResource[0];
+	/** Projects containing the resources being operated on */
+	private IProject[] projects;
 	protected boolean isProject = false;
 	protected boolean isFolder  = false;
 	protected boolean isFile    = false;
@@ -180,12 +203,15 @@ implements
 
 	private static boolean isNewOpening = true;
 	
-	protected class InternalTab {
-		Composite comp;
-		String text;
-		String tip;
-		Image image;
-		ICPropertyTab tab;
+	/**
+	 * ICPropertyTab descriptor
+	 */
+	protected static class InternalTab {
+		final Composite comp;
+		final String text;
+		final String tip;
+		final Image image;
+		final ICPropertyTab tab;
 		
 		InternalTab(Composite _comp, String _text, Image _image, ICPropertyTab _tab, String _tip) {
 			comp  = _comp;
@@ -236,7 +262,7 @@ implements
 			s = Messages.AbstractPage_0; 
 		} else if (!isApplicable()) {
 			return null;
-		} else if (!isCDTProject(getProject())) {
+		} else if (!isCDTProject(getProjects())) {
 			s = Messages.AbstractPage_2; 
 		}
 		
@@ -279,7 +305,8 @@ implements
 			gd = new GridData(GridData.FILL_BOTH);
 			configSelector.setLayoutData(gd);
 
-			if (!CDTPrefUtil.getBool(CDTPrefUtil.KEY_NOMNG)) {
+			// Don't allow managing configurations if more than one resource is selected
+			if (!CDTPrefUtil.getBool(CDTPrefUtil.KEY_NOMNG) && getProjects().length == 1) {
 				manageButton = new Button(configGroup, SWT.PUSH);
 				manageButton.setText(Messages.AbstractPage_12); 
 				gd = new GridData(GridData.END);
@@ -378,23 +405,60 @@ implements
 		    if (folder.getItemCount() > 0) folder.setSelection(0);
 		}
 	}
+
 	/**
-	 * 
+	 * Returns the project associated with the currently selected configuration.
+	 *
+	 * Pages which handle selecting multiple resources should use #getProjects()
+	 * instead.
+	 *
+	 * @return currently selected IProject or null if resources in more than one 
+	 *         project selected
+	 * @deprecated 
+	 * @use {@link #getProjects()} instead
 	 */
+	@Deprecated
 	public IProject getProject() {
-		Object element = getElement();
-		if (element != null) { 
-			if (element instanceof IFile ||
-				element instanceof IProject ||
-				element instanceof IFolder)
-				{
-			IResource f = (IResource) element;
-			return f.getProject();
-				}
-			else if (element instanceof ICProject)
-				return ((ICProject)element).getProject();
+		// Short-cut for when only one project is selected
+		if (getProjects().length == 1)
+			return getProjects()[0];
+		else if (getProjects().length == 0)
+			return null;
+
+		ICResourceDescription resDesc = getResDesc();
+		if (resDesc == null)
+			return null;
+		IProject project = null;
+		if (resDesc instanceof ICMultiResourceDescription) {
+			Object[] items = ((ICMultiResourceDescription)resd).getItems();
+			project = ((ICResourceDescription)items[0]).getConfiguration().getProjectDescription().getProject();
+			for (int i = 1; i < items.length; i++)
+				if (!project.equals(((ICResourceDescription)items[1]).getConfiguration().getProjectDescription().getProject()))
+					return null;
+		} else
+			// Return the project for the selected configuration
+			return resDesc.getConfiguration().getProjectDescription().getProject();
+		return project;
+	}
+
+	/**
+	 * @return array of projects which contain selected resources
+	 * @since 5.3
+	 */
+	public IProject[] getProjects() {
+		if (projects != null)
+			return projects;
+		LinkedHashSet<IProject> projects = new LinkedHashSet<IProject>();
+		for (IAdaptable a : getElements()) {
+			IProject proj = null;
+			if (a instanceof IResource)
+				proj = ((IResource)a).getProject();
+			else if (a instanceof ICProject)
+				proj = ((ICProject)a).getProject();
+			projects.add(proj);
 		}
-		return null;
+		this.projects = projects.toArray(new IProject[projects.size()]);
+		return this.projects;
 	}
 
 	/*
@@ -558,9 +622,13 @@ implements
      *  @return the configuration description (found or created) or null in case of error
      */
     private ICConfigurationDescription findCfg(ICProjectDescription prj, ICConfigurationDescription cfg) {
-    	String id = cfg.getId();
+    	final String id = cfg.getId();
     	// find config with the same ID as original one
-		ICConfigurationDescription c = prj.getConfigurationById(id);
+    	ICConfigurationDescription c;
+    	if (prj instanceof ICMultiProjectDescription)
+    		c = ((ICMultiProjectDescription)prj).getConfigurationById(cfg.getProjectDescription().getProject(), id);
+    	else
+    		c = prj.getConfigurationById(id);
 		// if there's no cfg found, try to create it
 		if (c == null) {
 			try {
@@ -580,23 +648,42 @@ implements
     }
     
     /**
-     * The same code used to perform OK and Apply 
+     * This method is responsible for co-ordinating change saving to the Projects' description(s).
+     * It has two modes of operation:
+     * <ul>
+     * <li>Apply</li>
+     * <li>OK</li>
+     * </ul>
+     *  <p>
+     * In Apply: a brand new project description is fetched from core.  In this new Project Description, equivalent resource descriptions are fetched
+     * (i.e. resource descriptions, corresponding to resources selected when the property page was opened, in the configuration currently being viewed by the user).
+     * The tabs are invited to serialize changes into the resource description.  The Project Description is then serialized
+     * 
+     * <p>
+     * In OK: The shared Project Description held by CDTPropertyManager is serialized.  All tabs use this as a working project description, so no work
+     * needs to be done. Changes to all configuration resource descriptions are set.
+     * 
+     * <p>
+     * In Apply_OK, the APPLY mechanism is used.  Changes to all configurations are serialized into a new configuration.
+     *
+     * @param mode one of:  {@link #SAVE_MODE_OK} {@link #SAVE_MODE_APPLYOK} {@link #SAVE_MODE_APPLY}.
+     * @return boolean indicating success
      */
     private boolean performSave(int mode)	{
     	final int finalMode = mode;
 		if (noContentOnPage || !displayedConfig) return true;
 		if ((mode == SAVE_MODE_OK || mode == SAVE_MODE_APPLYOK) && CDTPropertyManager.isSaveDone()) return true; // do not duplicate
 		
-		final boolean needs = (mode != SAVE_MODE_OK);
-		final ICProjectDescription local_prjd = needs ? CoreModel.getDefault().getProjectDescription(getProject()) : null;
+		final boolean useNewProjectDescription = (mode != SAVE_MODE_OK);
+		final ICProjectDescription local_prjd = useNewProjectDescription ? CDTPropertyManager.getNewProjectDescription(getProjects()) : null;
 		
 		ICResourceDescription lc = null;
 		
-		if (needs) { 
+		if (useNewProjectDescription) {
 			if (isMultiCfg()) {
-				ICResourceDescription[] rds = (ICResourceDescription[])((ICMultiItemsHolder)resd).getItems();
+				ICResourceDescription[] rds = (ICResourceDescription[])((ICMultiItemsHolder<?>)resd).getItems();
 				for (int i=0; i<rds.length; i++) {
-					ICConfigurationDescription c = local_prjd.getConfigurationById(rds[i].getConfiguration().getId());
+					ICConfigurationDescription c = findCfg(local_prjd, rds[i].getConfiguration());
 					rds[i] = getResDesc(c);
 				}
 				lc = MultiItemsHolder.createRDescription(rds);
@@ -627,10 +714,10 @@ implements
 				switch (finalMode) {
 				case SAVE_MODE_APPLYOK:
 					sendOK();
-					ICConfigurationDescription[] olds = CDTPropertyManager.getProjectDescription(AbstractPage.this, getProject()).getConfigurations();
+					ICConfigurationDescription[] olds = CDTPropertyManager.getProjectDescription(AbstractPage.this, getProjects()).getConfigurations();
 					for (ICConfigurationDescription old : olds) {
 							resd = getResDesc(old);
-							ICResourceDescription r = getResDesc(local_prjd.getConfigurationById(old.getId()));
+							ICResourceDescription r = getResDesc(findCfg(local_prjd, old));
 							for (int j=0; j<CDTPropertyManager.getPagesCount(); j++) {
 								Object p = CDTPropertyManager.getPage(j);
 								if (p != null && p instanceof AbstractPage) { 
@@ -651,14 +738,18 @@ implements
 					break;
 				} // end switch
 				try {
-					if (needs) // 
-						CoreModel.getDefault().setProjectDescription(getProject(), local_prjd);
+					if (useNewProjectDescription) 
+						if (local_prjd instanceof ICMultiProjectDescription)
+							((ICMultiProjectDescription)local_prjd).setProjectDescriptions();
+						else
+							CoreModel.getDefault().setProjectDescription(getProject(), local_prjd);
 					else
 						CDTPropertyManager.performOk(AbstractPage.this);
 				} catch (CoreException e) {
 					CUIPlugin.logError(Messages.AbstractPage_11 + e.getLocalizedMessage()); 
 				}
-				updateViews(internalElement);
+				for (IResource res : resources)
+					updateViews(res);
 			}
 		};
 		IRunnableWithProgress op = new WorkspaceModifyDelegatingOperation(runnable);
@@ -716,15 +807,24 @@ implements
 		}
 	}
 
+	/**
+	 * Populate the configurations drop-down.
+	 * If configuration list contains > 1 items "All configurations" entry added
+	 * If configuration list contains > 2 items "Multiple Configurations..." entry added
+	 * 
+	 * If ProperPage was opened with multiple resources selected, in different projects,
+	 * then configuration names will be prepended by "ProjectName/"
+	 */
 	private void populateConfigurations() {
-		IProject prj = getProject();
+		IProject[] prj = getProjects();
 		// Do nothing in case of Preferences page.
 		if (prj == null)
 			return;
 
 		// Do not re-read if list already created by another page
+		ICProjectDescription pDesc = null;
 		if (cfgDescs == null) {
-			ICProjectDescription pDesc = CDTPropertyManager.getProjectDescription(this, prj);
+			pDesc = CDTPropertyManager.getProjectDescription(this, prj);
 			cfgDescs = (pDesc == null)? null : pDesc.getConfigurations();
 			if (cfgDescs == null || cfgDescs.length == 0) return;
 			Arrays.sort(cfgDescs, CDTListComparator.getInstance());
@@ -732,9 +832,9 @@ implements
 		} else {
 			if (cfgDescs.length == 0) return;
 			// just register in CDTPropertyManager;
-			CDTPropertyManager.getProjectDescription(this, prj);
+			pDesc = CDTPropertyManager.getProjectDescription(this, prj);
 		}
-		
+
 		// Do nothing if widget not created yet.
 		if (configSelector == null)	{
 			lastSelectedCfg = cfgDescs[getActiveCfgIndex()];
@@ -744,12 +844,15 @@ implements
 
 		// Clear and replace the contents of the selector widget
 		configSelector.removeAll();
-		for (int i = 0; i < cfgDescs.length; ++i) {
-			String name = cfgDescs[i].getName();
-			if (cfgDescs[i].isActive()) {
-				name = name + "  " + Messages.AbstractPage_16; //$NON-NLS-1$ 
-			}
-			configSelector.add(name);
+		for (ICConfigurationDescription cfgDesc : cfgDescs) {
+			StringBuilder name = new StringBuilder();
+			// If resources in multiple projects are selected, then display as <Project_name>/<config_name>
+			if (pDesc instanceof ICMultiProjectDescription)
+				name.append(cfgDesc.getProjectDescription().getProject().getName()).append("/"); //$NON-NLS-1$
+			name.append(cfgDesc.getName());
+			if (cfgDesc.isActive())
+				name.append("  ").append(Messages.AbstractPage_16); //$NON-NLS-1$ 
+			configSelector.add(name.toString());
 		}
 
 		// Ensure that the last selected config is selected by default
@@ -818,11 +921,12 @@ implements
 		int saveMode = CDTPrefUtil.getInt(CDTPrefUtil.KEY_POSSAVE);
 		if (saveMode == CDTPrefUtil.POSITION_SAVE_NONE) return;
 		
-		if (internalElement == null && !checkElement()) 
+		if (!checkElement()) 
 			return; // not initialized. Do not process
-		IProject prj = getProject();
-		if (prj == null) 
-			return;	// preferences. Do not process. 
+		IProject[] prjs = getProjects();
+		if (prjs.length == 0)
+			return;	// preferences. Do not process.
+		IProject prj = prjs[0];
 		QualifiedName WIDTH  = new QualifiedName(prj.getName(),".property.page.width"); //$NON-NLS-1$
 		QualifiedName HEIGHT = new QualifiedName(prj.getName(),".property.page.height"); //$NON-NLS-1$
 		QualifiedName XKEY = new QualifiedName(prj.getName(),".property.page.x"); //$NON-NLS-1$
@@ -900,7 +1004,17 @@ implements
 	public boolean isCDTProject(IProject p) {
 		return isCDTPrj(p);
 	}
-	
+
+	private boolean isCDTProject(IProject[] ps) {
+		for (IProject p : ps)
+			if (!isCDTPrj(p))
+				return false;
+		return true;
+	}
+
+	/**
+	 * @return {@link ICResourceDescription} corresponding for the resources in the currently selected configuration(s)
+	 */
 	public ICResourceDescription getResDesc() {
 		if (resd == null) {
 			if (cfgDescs == null) {
@@ -913,20 +1027,34 @@ implements
 		return resd;
 	}
 
+	/**
+	 * @return the {@link ICResourceDescription} corresponding to the resources selected when the 
+	 *          property page was opened in the selected configuration(s)
+	 */
 	public ICResourceDescription getResDesc(ICConfigurationDescription cf) {
-		IAdaptable ad = getElement();
-		
+		// Project level is easy. We're returning the resource descriptions for  "/"
+		// for the passed in configuration descriptions.
 		if (isForProject()) 
 			return cf.getRootFolderDescription();
+		assert (isForFolder() || isForFile());
+
+		IResource[] ress = (IResource[])getElements();
+		// For Folder or File level resource descriptions, we need to fetch appropriate
+		// resource description from the project configurations of projects that contain
+		// the passed in resources.
+		List<ICResourceDescription> resds = new ArrayList<ICResourceDescription>();
 		ICResourceDescription out = null;
-		IResource res = (IResource)ad; 
-		IPath p = res.getProjectRelativePath();
-		if (isForFolder() || isForFile()) {
+		for (IResource res : ress) {
+			IPath p = res.getProjectRelativePath();
 			if (cf instanceof ICMultiItemsHolder) {
+				// NB (/FIXME) This will create resource configurations in projects which don't include the passed in resource
 				out = cf.getResourceDescription(p, isForFolder()); // sic ! 
 			} else {
+				// If this resource isn't part of this selected configuration, then nothing more to do.
+				if (!res.getProject().equals(cf.getProjectDescription().getProject()))
+					continue;
 				out = cf.getResourceDescription(p, false);
-				if (! p.equals(out.getPath()) ) {
+				if (!p.equals(out.getPath()) ) {
 					try {
 						if (isForFolder())
 							out = cf.createFolderDescription(p, (ICFolderDescription)out);
@@ -938,6 +1066,12 @@ implements
 					}
 				}
 			}
+			resds.add(out);
+		}
+		if (resds.size() > 1) {
+			out = isForFolder() ? 
+					new MultiFolderDescription(resds.toArray(new ICFolderDescription[resds.size()])) : 
+						new MultiFileDescription(resds.toArray(new ICFileDescription[resds.size()]));
 		}
 		return out;
 	}
@@ -1057,7 +1191,7 @@ implements
 	}
 
 	/**
-	 * 
+	 * Loads the description of an ICPropertyTab from the IConfigurationElement
 	 * @param element
 	 * @param parent
 	 * @return true if we should exit (no more loadings)
@@ -1207,33 +1341,65 @@ implements
 				break;
 		}
 	}
-	
+
 	/**
-	 * Performs conversion of incoming element to internal representation.
+	 * Performs conversion of incoming elements to resources.
+	 * Checks that elements selected in the UI are consistent 
+	 * i.e. they're all Resources of the same type
+	 * @return true if all elements were successfully converted to IResources
 	 */
 	protected boolean checkElement() {
-		IAdaptable el = super.getElement();
-		if (el instanceof ICElement) 
-			internalElement = ((ICElement)el).getResource();
-		else if (el instanceof IResource) 
-			internalElement = (IResource)el;
-		else
-		    internalElement = (IResource) el.getAdapter(IResource.class);
-		if (internalElement == null) return false;
-		isProject = internalElement instanceof IProject;
-		isFolder  = internalElement instanceof IFolder;
-		isFile    = internalElement instanceof IFile;
+		IAdaptable[] els = elements;
+		if (els.length == 0)
+			return false;
+
+		resources = new IResource[els.length];
+		for (int i = 0; i < els.length; i++) {
+			if (els[i] instanceof IResource)
+				resources[i] = (IResource)els[i];
+			else
+				resources[i] = (IResource)els[i].getAdapter(IResource.class);
+			// If this isn't a resource  
+			//     || its a resource of a different type, something has gone wrong
+			if (resources[i] == null || resources[i].getType() != resources[0].getType())
+				return false;
+		}
+
+		// All resources are of the same type
+		isProject = resources[0].getType() == IResource.PROJECT;
+		isFolder = resources[0].getType() == IResource.FOLDER; 
+		isFile = resources[0].getType() == IResource.FILE;
+
+		// Backwards compatibility => set internalElement to be the first selected resources
+		internalElement = resources[0];
 		return true;
 	}
-	
+
 	// override parent's method to use proper class
 	@Override
 	public IAdaptable getElement() {
-		if (internalElement == null && !checkElement()) 
-			throw (new NullPointerException(Messages.AbstractPage_15)); 
-		return internalElement; 
+		if ((resources.length == 0 || resources[0] == null) && !checkElement()) 
+			throw (new NullPointerException(Messages.AbstractPage_15));
+		if (resources.length == 0)
+			return null;
+		return resources[0]; 
 	}
-	
+
+	public IAdaptable[] getElements() {
+		if ((resources.length == 0 || resources[0] == null) && !checkElement()) 
+			throw (new NullPointerException(Messages.AbstractPage_15)); 
+		return resources;
+	}
+
+	@Override
+	public void setElement(IAdaptable el) {
+		elements = new IAdaptable[]{el};
+	}
+
+	public void setElements(IAdaptable[] els) {
+		elements = els;
+	}
+
 	public boolean isForProject()  { return isProject; }
 	public boolean isForFolder()   { return isFolder; }
 	public boolean isForFile()     { return isFile; }
@@ -1252,7 +1418,7 @@ implements
 	 * @return - true if element is applicable to CDT pages.
 	 */
 	public boolean isApplicable() {
-		if (internalElement == null && !checkElement())
+		if (!checkElement())
 			return false; // unknown element
 		if (isForFile()) // only source files are applicable
 			return true; //CoreModel.isValidSourceUnitName(getProject(), internalElement.getName());

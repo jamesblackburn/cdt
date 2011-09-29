@@ -73,8 +73,8 @@ import org.eclipse.cdt.internal.ui.newui.Messages;
  *
  * In this case, we'll able to use:
  * - a lot of utility methods via "provider" link.
- *   In particular, it allows to get current project,
- *   configuration etc. See ICPropertyProvider interface. 
+ *   In particular, it allows to get current project(s),
+ *   selected configuration(s) etc. See ICPropertyProvider interface. 
  * - a standard way to create buttons (ins/edit/del etc)
  *   and to handle their events (see buttonPressed(int))
  * - several utility methods to create widgets in the
@@ -84,6 +84,8 @@ import org.eclipse.cdt.internal.ui.newui.Messages;
  */
 public abstract class AbstractCPropertyTab implements ICPropertyTab {
 	
+	/** @deprecated {@link Button#setGrayed(boolean)} now accessible ; do not use */
+	@Deprecated
 	public static final Method GRAY_METHOD = getGrayEnabled();
 	public static final int BUTTON_WIDTH = 120; // used as hint for all push buttons
 
@@ -631,7 +633,9 @@ public abstract class AbstractCPropertyTab implements ICPropertyTab {
 	 * when Button.setGrayed() will be officially accessible.
 	 * 
 	 * @return reference to Button.setGrayed() method
+	 * @deprecated
 	 */
+	@Deprecated
 	private static Method getGrayEnabled() {
 		try {
 			Class<?> cl = Class.forName("org.eclipse.swt.widgets.Button"); //$NON-NLS-1$

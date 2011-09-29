@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2007, 2009 Intel Corporation and others.
+ * Copyright (c) 2007, 2010 Intel Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -7,10 +7,12 @@
  *
  * Contributors:
  *     Intel Corporation - initial API and implementation
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui.newui;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 import org.eclipse.core.resources.IProject;
 import org.eclipse.core.runtime.CoreException;
@@ -20,24 +22,27 @@ import org.eclipse.swt.widgets.Widget;
 import org.eclipse.ui.dialogs.PropertyPage;
 
 import org.eclipse.cdt.core.model.CoreModel;
+import org.eclipse.cdt.core.settings.model.ICMultiProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.ui.CUIPlugin;
+
+import org.eclipse.cdt.internal.core.settings.model.MultiProjectDescription;
 
 import org.eclipse.cdt.internal.ui.newui.Messages;
 
 /**
- * This class is intended to handle  
+ * This class allows multiple Property pages to access and share the same underlying
+ * CProjectDescription from the main UI thread.
  * 
- * When new propertypage is created, it should request 
- * project description by method 
- * getProjectDescription()
- * This method, in addition, registers page in list.
+ * When new Propertypage is created, it should request project description by method 
+ * {@link #getProjectDescription(PropertyPage, IProject)} or
+ * {@link #getProjectDescription(PropertyPage, IProject[])}
+ * This method, both returns the shared project description for the lifetime of all
+ * property pages which have accessed the project description.
  * 
- * While page is active, it can change this description
- * but should not set it, to avoid inconsistency.
+ * While page is active, it can change this description but should not set it, to avoid inconsistency.
  * 
- * When page's "performOK" called, it should call
- * manager's  method
+ * When page's "performOK" called, it should call manager's  method
  * performOk()
  *
  * Registered pages can call {@link CDTPropertyManager#remove(Object)}
@@ -55,24 +60,53 @@ public class CDTPropertyManager {
 	private static ArrayList<Object> pages = new ArrayList<Object>();
 	private static ICProjectDescription prjd = null;
 	private static boolean saveDone  = false;
-	private static IProject project = null;
+	private static IProject[] projects = null;
 	private static DListener dListener = new DListener();
-	
-	
+
 	public static ICProjectDescription getProjectDescription(PropertyPage p, IProject prj) {
-		return get(p, prj);
-	} 	
+		return get(p, new IProject[]{prj});
+	}
 	public static ICProjectDescription getProjectDescription(Widget w, IProject prj) {
-		return get(w, prj);
-	} 	
+		return get(w, new IProject[]{prj});
+	}
 	public static ICProjectDescription getProjectDescription(IProject prj) {
-		return get(null, prj);
-	} 	
-	
-	private static ICProjectDescription get(Object p, IProject prj) {
+		return get(null, new IProject[]{prj});
+	}
+
+	/**
+	 * Return a project description corresponding to the passed in projects 
+	 * @param propertyPage requesting the project description
+	 * @param prjs
+	 * @return {@link ICProjectDescription} corresponding to the passed in prjs
+	 * @since 5.3
+	 */
+	public static ICProjectDescription getProjectDescription(PropertyPage propertyPage, IProject[] prjs) {
+		return get(propertyPage, prjs);
+	}
+
+	/**
+	 * Helper method to fetch an entirely new (& uncached) ICProjectDescription for a set of Projects
+	 * @param projects array of projects
+	 * @return {@link ICProjectDescription} or {@link ICMultiProjectDescription} corresponding to projects
+	 * @since 5.3
+	 */
+	static ICProjectDescription getNewProjectDescription(IProject[] projects) {
+		ICProjectDescription desc = null;
+		if (projects.length == 1)
+			desc = CoreModel.getDefault().getProjectDescription(projects[0]);
+		else {
+			ICProjectDescription[] descs = new ICProjectDescription[projects.length];
+			for (int i = 0; i < projects.length; i++)
+				descs[i] = CoreModel.getDefault().getProjectDescription(projects[i]);
+			desc = new MultiProjectDescription(descs);
+		}
+		return desc;
+	}
+
+	private static ICProjectDescription get(Object p, IProject[] prj) {
 		// New session - clean static variables
 		if (pages.size() == 0) {
-			project = null;
+			projects = null;
 			prjd = null;
 			saveDone = false;
 		}
@@ -87,17 +121,16 @@ public class CDTPropertyManager {
 			}
 		}
 		// Check that we are working with the same project 
-		if (project == null || !project.equals(prj)) {
-			project = prj;
+		if (!Arrays.equals(projects, prj)) {
+			projects = prj;
 			prjd = null;
 		}
 		// obtain description if it's needed.
-		if (prjd == null) {
-			prjd = CoreModel.getDefault().getProjectDescription(prj);
-		}
+		if (prjd == null)
+			prjd = getNewProjectDescription(projects);
 		return prjd;
 	}
-
+	
 	/**
 	 * Performs optimized (single-time) saving
 	 * @param p - widget which calls this functionality
@@ -108,7 +141,7 @@ public class CDTPropertyManager {
 		performOkForced(p);
 		
 		if (pages.size() == 0) {
-			project = null;
+			projects = null;
 			prjd = null;
 			saveDone = false;
 		}
@@ -118,7 +151,7 @@ public class CDTPropertyManager {
 		saveDone = true;
 		
 		if (pages.size() == 0) {
-			project = null;
+			projects = null;
 			prjd = null;
 			saveDone = false;
 		}
@@ -140,18 +173,21 @@ public class CDTPropertyManager {
 	public static void performOkForced(Object p) {
 		saveDone = true;
 		try {
-			CoreModel.getDefault().setProjectDescription(project, prjd);
+			if (!(prjd instanceof ICMultiProjectDescription))
+				CoreModel.getDefault().setProjectDescription(prjd.getProject(), prjd);
+			else
+				((ICMultiProjectDescription)prjd).setProjectDescriptions();
 		} catch (CoreException e) {
 			CUIPlugin.logError(Messages.AbstractPage_11 + e.getLocalizedMessage()); 
 		}
-		
+
 		if (pages.size() == 0) {
-			project = null;
+			projects = null;
 			prjd = null;
 			saveDone = false;
 		}
 	}
-	
+
 	// pages utilities
 	public static boolean isSaveDone() { return saveDone; }	
 	public static int getPagesCount() {	return pages.size(); }
@@ -175,7 +211,7 @@ public class CDTPropertyManager {
 
 			if (pages.isEmpty()) {
 				saveDone = true;
-				project = null;
+				projects = null;
 				prjd = null;
 				saveDone = false;
 			}
@@ -184,5 +220,5 @@ public class CDTPropertyManager {
 			dispose(e.widget);
 		}
 	}
-	
+
 }

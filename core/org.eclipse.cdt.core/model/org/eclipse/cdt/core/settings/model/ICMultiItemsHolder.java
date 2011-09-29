@@ -23,11 +23,11 @@ package org.eclipse.cdt.core.settings.model;
  * and their list cannot be changed in life time. 
  *
  */
-public interface ICMultiItemsHolder {
+public interface ICMultiItemsHolder<T> {
 	public static final String EMPTY_STR = ""; //$NON-NLS-1$
 
 	/**
 	 * @return array of items which it holds 
 	 */
-	Object[] getItems();
+	T[] getItems();
 }

@@ -29,7 +29,7 @@ import org.eclipse.core.runtime.IPath;
  * This class represents multi-resource holder
  */
 public abstract class MultiResourceDescription extends MultiItemsHolder implements ICMultiResourceDescription {
-	ICResourceDescription[] fRess = null;
+	public ICResourceDescription[] fRess = null;
 	ICConfigurationDescription fCfg = null;
 	
 	public MultiResourceDescription(ICResourceDescription[] res) {
