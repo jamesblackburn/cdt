@@ -56,4 +56,20 @@ public interface IAsmLanguage {
 	 */
 	String[] getPreprocessorKeywords();
 
+	/**
+	 * Get the assembler mnemonics which make up the language
+	 *
+	 * @return an array of assembler mnemonics
+	 * @since 5.3
+	 */
+	String[] getMnemonics();
+
+	/**
+	 * Get the branch mnemonics which make up the language
+	 *
+	 * @return an array of assembler mnemonics
+	 * @since 5.3
+	 */
+	String[] getBranchMnemonics();
+
 }

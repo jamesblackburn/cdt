@@ -8,6 +8,7 @@
  * Contributors:
  *     QNX Software Systems - Initial API and implementation
  *     IBM Corporation
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui.text;
 
@@ -59,6 +60,12 @@ public interface ICColorConstants {
 	String ASM_DIRECTIVE= "asm_directive"; //$NON-NLS-1$
     /** The color key for assembly labels. */
     String ASM_LABEL= "asm_label"; //$NON-NLS-1$
+    /** The color key used for assembler mnemonics 
+     * @since 5.3*/
+	String ASM_MNEMONIC = "asm_mnemonic"; //$NON-NLS-1$
+	/** The color key used for branch assembler mnemonics 
+	 * @since 5.3*/
+	String ASM_BRANCH = "asm_branch"; //$NON-NLS-1$
 
     /**
      * The color key for task tags in C comments

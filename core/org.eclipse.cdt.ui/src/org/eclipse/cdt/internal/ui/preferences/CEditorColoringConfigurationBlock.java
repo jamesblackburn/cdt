@@ -9,6 +9,7 @@
  *     IBM Corporation - initial API and implementation
  *     Anton Leherbauer (Wind River Systems
  *     Andrew Ferguson (Symbian)
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 
 package org.eclipse.cdt.internal.ui.preferences;
@@ -17,9 +18,14 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+import java.util.SortedSet;
+import java.util.StringTokenizer;
+import java.util.TreeSet;
 
 import org.eclipse.jface.dialogs.Dialog;
+import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.layout.PixelConverter;
 import org.eclipse.jface.preference.ColorSelector;
 import org.eclipse.jface.preference.IPreferenceStore;
@@ -39,6 +45,7 @@ import org.eclipse.jface.viewers.StructuredViewer;
 import org.eclipse.jface.viewers.TreeViewer;
 import org.eclipse.jface.viewers.Viewer;
 import org.eclipse.jface.viewers.ViewerSorter;
+import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
@@ -51,11 +58,14 @@ import org.eclipse.swt.graphics.RGB;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Link;
+import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.ScrollBar;
 import org.eclipse.swt.widgets.Scrollable;
 import org.eclipse.ui.dialogs.PreferencesUtil;
@@ -64,15 +74,19 @@ import org.eclipse.ui.texteditor.ChainedPreferenceStore;
 
 import org.eclipse.cdt.ui.CUIPlugin;
 import org.eclipse.cdt.ui.PreferenceConstants;
+import org.eclipse.cdt.ui.text.CSourceViewerConfiguration;
 import org.eclipse.cdt.ui.text.ICPartitions;
 import org.eclipse.cdt.ui.text.IColorManager;
 import org.eclipse.cdt.ui.text.doctools.doxygen.DoxygenHelper;
+import org.eclipse.cdt.utils.ui.controls.ControlFactory;
 
 import org.eclipse.cdt.internal.ui.editor.CSourceViewer;
 import org.eclipse.cdt.internal.ui.editor.SemanticHighlighting;
 import org.eclipse.cdt.internal.ui.editor.SemanticHighlightingManager;
 import org.eclipse.cdt.internal.ui.editor.SemanticHighlightingManager.HighlightedRange;
 import org.eclipse.cdt.internal.ui.editor.SemanticHighlightings;
+import org.eclipse.cdt.internal.ui.editor.asm.IASMColorConstants;
+import org.eclipse.cdt.internal.ui.text.CTextTools;
 import org.eclipse.cdt.internal.ui.text.SimpleCSourceViewerConfiguration;
 import org.eclipse.cdt.internal.ui.text.util.CColorManager;
 
@@ -251,15 +265,15 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 			if (parentElement instanceof String) {
 				String entry= (String) parentElement;
 				if (fCodeCategory.equals(entry))
-					return fListModel.subList(11, fListModel.size()).toArray();
+					return fListModel.subList(13, fListModel.size()).toArray();
 				if (fAssemblyCategory.equals(entry))
-					return fListModel.subList(6, 8).toArray();
+					return fListModel.subList(6, 10).toArray();
 				if (fCommentsCategory.equals(entry))
 					return fListModel.subList(0, 3).toArray();
 				if (fPreprocessorCategory.equals(entry))
 					return fListModel.subList(3, 6).toArray();
 				if (fDoxygenCategory.equals(entry))
-					return fListModel.subList(8, 11).toArray();
+					return fListModel.subList(10, 13).toArray();
 			}
 			return new Object[0];
 		}
@@ -268,9 +282,9 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 			if (element instanceof String)
 				return null;
 			int index= fListModel.indexOf(element);
-			if (index >= 11)
+			if (index >= 13)
 				return fCodeCategory;
-			if (index >= 8)
+			if (index >= 10)
 				return fDoxygenCategory;
 			if (index >= 6)
 				return fAssemblyCategory;
@@ -311,7 +325,10 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 			{ PreferencesMessages.CEditorColoringConfigurationBlock_ppDirectives, PreferenceConstants.EDITOR_PP_DIRECTIVE_COLOR },
 			{ PreferencesMessages.CEditorColoringConfigurationBlock_ppOthers, PreferenceConstants.EDITOR_PP_DEFAULT_COLOR },
 			{ PreferencesMessages.CEditorColoringConfigurationBlock_ppHeaders, PreferenceConstants.EDITOR_PP_HEADER_COLOR },
+			// Assembler
+			{ PreferencesMessages.CEditorColoringConfigurationBlock_asmMnemonic, PreferenceConstants.EDITOR_ASM_MNEMONIC_COLOR },
 			{ PreferencesMessages.CEditorColoringConfigurationBlock_asmLabels, PreferenceConstants.EDITOR_ASM_LABEL_COLOR },
+			{ PreferencesMessages.CEditorColoringConfigurationBlock_asmBranch, PreferenceConstants.EDITOR_ASM_BRANCH_COLOR },
 			{ PreferencesMessages.CEditorColoringConfigurationBlock_asmDirectives, PreferenceConstants.EDITOR_ASM_DIRECTIVE_COLOR },
          	{ PreferencesMessages.CEditorColoringConfigurationBlock_DoxygenTagRecognized, DoxygenHelper.DOXYGEN_TAG_RECOGNIZED },
 			{ PreferencesMessages.CEditorColoringConfigurationBlock_DoxygenSingleLineComment, DoxygenHelper.DOXYGEN_SINGLE_TOKEN },
@@ -332,6 +349,23 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 	private final String fAssemblyCategory= PreferencesMessages.CEditorColoringConfigurationBlock_coloring_category_assembly;
 	private final String fDoxygenCategory= PreferencesMessages.CEditorColoringConfigurationBlock_coloring_category_doxygen;
 	
+	/* String[] {TypeName , Separator delimited list of Mnemonics } */
+	/*used at Init Default so users don't lose their loaded in Mnemonics
+	  so only needs to be loaded in at dialog entry */
+	private static class AssemblyTypeModel {
+		// Indicates if the type is provided by a language contribution
+		boolean builtInLanguage;
+		// Name of the type
+		String fAsmTypeName;
+		// The Mnemonics 
+		String[] fAsmMnemonics;
+	}
+	protected String[][] fAssemblyTypeModel;
+	/*Assembler Configuration items	 */
+	private Combo fAssemblyCombo;
+	private Button fAddAssemblyType;
+	private Button fRemoveAssemblyType;
+	/**/
 	private ColorSelector fSyntaxForegroundColorEditor;
 	private Label fColorEditorLabel;
 	private Button fEnableSemanticHighlightingCheckbox;
@@ -421,6 +455,14 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 				overlayKeys.add(new OverlayPreferenceStore.OverlayKey(OverlayPreferenceStore.BOOLEAN, ((SemanticHighlightingColorListItem) item).getEnableKey()));
 		}
 		
+		//There seems to be no way to easily store a named collection of values in the
+        //PreferenceStore (http://www.eclipse.org/articles/Article-Preferences/preferences.htm)
+        //So: 1) Store the list of Assembler Mnemonic names: IASMColorConstants.ASM_MNEMONIC_NAMES
+        //	  2) Store the current Mnemonic in use: IASMColorConstants.ASM_MNEMONIC_CURRENT
+        //    3) Store the list of Mnemonics for each name under: IASMColorConstants.ASM_MNEMONIC_{name}
+        overlayKeys.add(new OverlayPreferenceStore.OverlayKey(OverlayPreferenceStore.STRING, IASMColorConstants.ASM_MNEMONIC_CURRENT));
+        overlayKeys.add(new OverlayPreferenceStore.OverlayKey(OverlayPreferenceStore.STRING, IASMColorConstants.ASM_MNEMONIC_NAMES));
+		
 		OverlayPreferenceStore.OverlayKey[] keys= new OverlayPreferenceStore.OverlayKey[overlayKeys.size()];
 		overlayKeys.toArray(keys);
 		return keys;
@@ -485,8 +527,12 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 	public void initialize() {
 		super.initialize();
 		
+		initAsmTypeModel();
+		
 		fListViewer.setInput(fListModel);
 		fListViewer.setSelection(new StructuredSelection(fCodeCategory));
+		
+		resetAsmTypeCombo();		
 	}
 
 	@Override
@@ -495,6 +541,7 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 		
 		fListViewer.refresh();
 
+		restoreAsmTypeModel();
 		handleSyntaxColorListSelection();
 
 		uninstallSemanticHighlighting();
@@ -516,6 +563,13 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 
 	private void handleSyntaxColorListSelection() {
 		HighlightingColorListItem item= getHighlightingColorListItem();
+
+		// Assembly controls default to being hidden
+		boolean asmMnemonics = getHighlightedColorListSection() == PreferencesMessages.CEditorColoringConfigurationBlock_coloring_category_assembly;
+		fAssemblyCombo.setVisible(asmMnemonics);
+		fAddAssemblyType.setVisible(asmMnemonics);
+		fRemoveAssemblyType.setVisible(asmMnemonics);
+
 		if (item == null) {
 			fEnableCheckbox.setEnabled(false);
 			fSyntaxForegroundColorEditor.getButton().setEnabled(false);
@@ -621,7 +675,7 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 			}
 		});
 		gd= new GridData(SWT.BEGINNING, SWT.BEGINNING, false, true);
-		gd.heightHint= convertHeightInCharsToPixels(9);
+		gd.heightHint= convertHeightInCharsToPixels(10);
 		int maxWidth= 0;
 		for (HighlightingColorListItem item : fListModel) {
 			maxWidth= Math.max(maxWidth, convertWidthInCharsToPixels(item.getDisplayName().length()));
@@ -637,7 +691,7 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 		layout= new GridLayout();
 		layout.marginHeight= 0;
 		layout.marginWidth= 0;
-		layout.numColumns= 2;
+		layout.numColumns= 3;
 		stylesComposite.setLayout(layout);
 		stylesComposite.setLayoutData(new GridData(GridData.FILL_BOTH));
 		
@@ -645,7 +699,7 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 		fEnableCheckbox.setText(PreferencesMessages.CEditorColoringConfigurationBlock_enable);
 		gd= new GridData(GridData.FILL_HORIZONTAL);
 		gd.horizontalAlignment= GridData.BEGINNING;
-		gd.horizontalSpan= 2;
+		gd.horizontalSpan= 3;
 		fEnableCheckbox.setLayoutData(gd);
 		
 		fColorEditorLabel= new Label(stylesComposite, SWT.LEFT);
@@ -663,30 +717,41 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 		fBoldCheckBox.setText(PreferencesMessages.CEditorColoringConfigurationBlock_bold);
 		gd= new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
 		gd.horizontalIndent= 20;
-		gd.horizontalSpan= 2;
+		gd.horizontalSpan= 3;
 		fBoldCheckBox.setLayoutData(gd);
 		
 		fItalicCheckBox= new Button(stylesComposite, SWT.CHECK);
 		fItalicCheckBox.setText(PreferencesMessages.CEditorColoringConfigurationBlock_italic);
 		gd= new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
 		gd.horizontalIndent= 20;
-		gd.horizontalSpan= 2;
+		gd.horizontalSpan= 3;
 		fItalicCheckBox.setLayoutData(gd);
 		
 		fStrikethroughCheckBox= new Button(stylesComposite, SWT.CHECK);
 		fStrikethroughCheckBox.setText(PreferencesMessages.CEditorColoringConfigurationBlock_strikethrough);
 		gd= new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
 		gd.horizontalIndent= 20;
-		gd.horizontalSpan= 2;
+		gd.horizontalSpan= 3;
 		fStrikethroughCheckBox.setLayoutData(gd);
 		
 		fUnderlineCheckBox= new Button(stylesComposite, SWT.CHECK);
 		fUnderlineCheckBox.setText(PreferencesMessages.CEditorColoringConfigurationBlock_underline);
 		gd= new GridData(GridData.HORIZONTAL_ALIGN_BEGINNING);
 		gd.horizontalIndent= 20;
-		gd.horizontalSpan= 2;
+		gd.horizontalSpan= 3;
 		fUnderlineCheckBox.setLayoutData(gd);
 		
+		/* Assembler related Controls */
+		fAssemblyCombo = ControlFactory.createSelectCombo(stylesComposite, "", ""); //$NON-NLS-1$ //$NON-NLS-2$
+		fAssemblyCombo.setVisible(false);
+
+		fAddAssemblyType = ControlFactory.createPushButton(stylesComposite, PreferencesMessages.CEditorColoringConfigurationBlock_asmAddAssemblyType);
+		fAddAssemblyType.setVisible(false);
+
+		fRemoveAssemblyType = ControlFactory.createPushButton(stylesComposite, PreferencesMessages.CEditorColoringConfigurationBlock_asmRemoveAssemblyType);
+		fRemoveAssemblyType.setVisible(false);
+		
+		/* Preview */
 		label= new Label(colorComposite, SWT.LEFT);
 		label.setText(PreferencesMessages.CEditorColoringConfigurationBlock_preview);
 		label.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
@@ -699,6 +764,7 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 		
 		fListViewer.addSelectionChangedListener(new ISelectionChangedListener() {
 			public void selectionChanged(SelectionChangedEvent event) {
+				resetPreviewer();
 				handleSyntaxColorListSelection();
 			}
 		});
@@ -789,9 +855,117 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 			}
 		});
 		
+		fAssemblyCombo.addSelectionListener(new SelectionListener() {
+			public void widgetDefaultSelected(SelectionEvent e) {}
+			public void widgetSelected(SelectionEvent e) {
+				if (!fAssemblyCombo.getText().equals(
+						PreferencesMessages.CEditorColoringConfigurationBlock_asmDefaultAssemblyType))
+					getPreferenceStore().setValue(IASMColorConstants.ASM_MNEMONIC_CURRENT, fAssemblyCombo.getText());	
+				else
+					getPreferenceStore().setValue(IASMColorConstants.ASM_MNEMONIC_CURRENT, "");//$NON-NLS-1$
+
+			}
+		});
+
+		fAddAssemblyType.addListener(SWT.Selection, new Listener() {
+			public void handleEvent(Event e) {
+				handleAssemblyAdd();
+			}
+		});
+
 		colorComposite.layout(false);
 				
 		return colorComposite;
+	}
+	
+	private void handleAssemblyAdd() {
+		CNewAssemblerTypeDialog dlg = new CNewAssemblerTypeDialog(fAddAssemblyType.getParent().getShell());
+		if (Window.OK == dlg.open()) {
+			String name = dlg.getName();
+			String[] mns = dlg.getMnemonics();
+			if (name != null && mns != null && mns.length!=0 && name.length()!=0){
+				SortedSet<String> names=getAsmTypeNames();
+				if (names.contains(name)) {
+					MessageDialog.openInformation(null, PreferencesMessages.CEditorNewAssemblerTypeDialog_errorTitle,
+							PreferencesMessages.CEditorNewAssemblerTypeDialog_TypeAlreadyExists);
+					return;
+				}
+				addAsmTypeMns(name, mns);
+				fAssemblyCombo.select(fAssemblyCombo.indexOf(name));
+				getPreferenceStore().setValue(IASMColorConstants.ASM_MNEMONIC_CURRENT, fAssemblyCombo.getText());	
+			} else {
+				MessageDialog.openInformation(null, PreferencesMessages.CEditorNewAssemblerTypeDialog_errorTitle,
+						PreferencesMessages.CEditorNewAssemblerTypeDialog_NameMnsEmpty);		
+			}
+		}		
+	}
+	
+	/*
+	 * Helper functions for managing the assembler Mnemonic Collections.
+	 */
+	private SortedSet<String> getAsmTypeNames() {
+		StringTokenizer tk = new StringTokenizer(getPreferenceStore().getString(IASMColorConstants.ASM_MNEMONIC_NAMES),
+				IASMColorConstants.ASM_SEPARATOR);
+		SortedSet<String> names = new TreeSet<String>();
+		while (tk.hasMoreElements())
+			names.add(tk.nextToken());
+		return names;
+	}
+	
+	private void addAsmTypeMns(String name, String[] mns) {
+		StringBuffer sb = new StringBuffer();
+		for (int i=0; i<mns.length; i++)
+			sb.append(mns[i]+IASMColorConstants.ASM_SEPARATOR);
+		addAsmTypeMns(name, sb.toString());
+	}
+
+	private void addAsmTypeMns(String name, String mns) {
+		SortedSet<String> names=getAsmTypeNames();
+		names.add(name);
+		getPreferenceStore().setValue(IASMColorConstants.ASM_MNEMONIC_NAMES, makeString(names));
+		getPreferenceStore().fParent.setValue(IASMColorConstants.ASM_MNEMONIC_+name, mns);
+		getPreferenceStore().fStore.setValue(IASMColorConstants.ASM_MNEMONIC_+name, mns);
+		resetAsmTypeCombo();
+	}
+
+	private String makeString(SortedSet<String> ts) {
+		StringBuffer sb = new StringBuffer();
+		Iterator<String> it = ts.iterator();
+		while(it.hasNext())
+			sb.append(it.next()+IASMColorConstants.ASM_SEPARATOR);
+		return sb.toString();
+	}
+
+	private void resetAsmTypeCombo() {
+		String currSel = getPreferenceStore().getString(IASMColorConstants.ASM_MNEMONIC_CURRENT);
+		fAssemblyCombo.removeAll();
+		for (String name : getAsmTypeNames())
+			fAssemblyCombo.add(name);
+		fAssemblyCombo.add(PreferencesMessages.CEditorColoringConfigurationBlock_asmDefaultAssemblyType);
+		if (currSel.length() == 0 || fAssemblyCombo.indexOf(currSel) == -1) //Select "None"
+			fAssemblyCombo.select(fAssemblyCombo.indexOf(
+					PreferencesMessages.CEditorColoringConfigurationBlock_asmDefaultAssemblyType));
+		else
+			fAssemblyCombo.select(fAssemblyCombo.indexOf(currSel));
+	}
+
+	/* Helper method to initialise the temp store for 'Restore Defaults' */
+	private void initAsmTypeModel() {
+		SortedSet<String> ts = getAsmTypeNames();
+		ArrayList<String[]> al = new ArrayList<String[]>();
+		for (String mn : ts) {
+			//Ensure the preference store has the values in it
+			getPreferenceStore().fStore.setValue(IASMColorConstants.ASM_MNEMONIC_+mn, getPreferenceStore().fParent.getString(IASMColorConstants.ASM_MNEMONIC_+mn));
+			al.add(new String [] {mn,  getPreferenceStore().fStore.getString(IASMColorConstants.ASM_MNEMONIC_+mn)} );
+		}
+		fAssemblyTypeModel = new String[al.size()][2];
+		al.toArray(fAssemblyTypeModel);
+	}
+
+	private void restoreAsmTypeModel() {
+		for (int i=0; i<fAssemblyTypeModel.length; i++) {
+			addAsmTypeMns(fAssemblyTypeModel[i][0], fAssemblyTypeModel[i][1]);
+		}
 	}
 	
 	private void addFiller(Composite composite, int horizontalSpan) {
@@ -824,6 +998,43 @@ class CEditorColoringConfigurationBlock extends AbstractConfigurationBlock {
 		return fPreviewViewer.getControl();
 	}
 
+	private void resetPreviewer() {
+		IPreferenceStore generalTextStore= EditorsUI.getPreferenceStore();
+		IPreferenceStore store= new ChainedPreferenceStore(new IPreferenceStore[] { getPreferenceStore(), generalTextStore });
+		fPreviewViewer.unconfigure();
+		if (getHighlightedColorListSection() != fAssemblyCategory) {		
+			String content= loadPreviewContentFromFile("ColorSettingPreviewCode.txt"); //$NON-NLS-1$
+			IDocument document= new Document(content);
+			CTextTools ctt = CUIPlugin.getDefault().getTextTools();
+			CSourceViewerConfiguration configuration = new SimpleCSourceViewerConfiguration(fColorManager, store, null, ICPartitions.C_PARTITIONING, false);
+			fPreviewViewer.configure(configuration);
+			CSourcePreviewerUpdater.registerPreviewer(fPreviewViewer, configuration, store);
+			ctt.setupCDocument(document);
+			fPreviewViewer.setDocument(document);
+		} else {
+//			String content= loadPreviewContentFromFile("ColorSettingASMPreviewCode.txt"); //$NON-NLS-1$
+			IDocument document= new Document(""/*content*/);
+//			AsmTextTools att = CUIPlugin.getDefault().getAsmTextTools();
+//			AsmSourceViewerConfiguration configuration = new AsmSourceViewerConfiguration(att, null, getPreferenceStore());
+//			fPreviewViewer.configure(configuration);
+//			CSourcePreviewerUpdater.registerPreviewer(fPreviewViewer, configuration, store);
+//			CUIPlugin.getDefault().getTextTools().setupCDocumentPartitioner(document, ICPartitions.ALL_ASM_PARTITIONS);
+			fPreviewViewer.setDocument(document);			
+		}
+	}
+	
+	/**
+	 * @return The name of the Parent element of the currently selected ListViewer 
+	 * item e.g. "Code", "Assembler"...
+	 */
+	private String getHighlightedColorListSection() {
+		IStructuredSelection selection= (IStructuredSelection) fListViewer.getSelection();
+		Object element= selection.getFirstElement();
+		return (element instanceof String) ? (String)element : 
+			(String)((ColorListContentProvider)fListViewer.getContentProvider()).getParent(getHighlightingColorListItem());
+	}
+
+	
 	private String loadPreviewContentFromFile(String filename) {
 		String line;
 		String separator= System.getProperty("line.separator"); //$NON-NLS-1$

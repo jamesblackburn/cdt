@@ -111,6 +111,15 @@ public class AsmTextEditor extends TextEditor implements ISelectionChangedListen
 	}
 
 	/*
+	 * (non-Javadoc)
+	 * @see org.eclipse.ui.texteditor.AbstractDecoratedTextEditor#initializeKeyBindingScopes()
+	 */
+	@Override
+	protected void initializeKeyBindingScopes() {
+		setKeyBindingScopes(new String [] { "org.eclipse.cdt.ui.asmEditorScope" } ); //$NON-NLS-1$
+	}
+
+	/*
 	 * @see org.eclipse.ui.texteditor.AbstractDecoratedTextEditor#collectContextMenuPreferencePages()
 	 */
 	@Override

@@ -12,6 +12,7 @@
  * 	   Sergey Prigogin (Google)
  *     Elazar Leibovich (IDF) - Code folding of compound statements (bug 174597)
  *     Jens Elmenthaler (Verigy) - http://bugs.eclipse.org/235586
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui;
 
@@ -34,6 +35,7 @@ import org.eclipse.cdt.core.model.ICProject;
 import org.eclipse.cdt.ui.text.ICColorConstants;
 
 import org.eclipse.cdt.internal.ui.ICThemeConstants;
+import org.eclipse.cdt.internal.ui.editor.asm.IASMColorConstants;
 import org.eclipse.cdt.internal.ui.preferences.formatter.FormatterProfileManager;
 import org.eclipse.cdt.internal.ui.text.spelling.SpellCheckEngine;
 
@@ -499,7 +501,7 @@ public class PreferenceConstants {
 	 * @see org.eclipse.jface.preference.PreferenceConverter
 	 * @since 5.0
 	 */
-	public final static String EDITOR_ASM_LABEL_COLOR= ICColorConstants.ASM_LABEL;
+	public final static String EDITOR_ASM_LABEL_COLOR= IASMColorConstants.ASM_LABEL;
 
 	/**
 	 * A named preference that controls whether assembly labels are rendered in bold.
@@ -509,7 +511,7 @@ public class PreferenceConstants {
 	 *
 	 * @since 5.0
 	 */
-	public final static String EDITOR_ASM_LABEL_BOLD= ICColorConstants.ASM_LABEL + EDITOR_BOLD_SUFFIX;
+	public final static String EDITOR_ASM_LABEL_BOLD= IASMColorConstants.ASM_LABEL + EDITOR_BOLD_SUFFIX;
 
 	/**
 	 * A named preference that controls whether assembly labels are rendered in italic.
@@ -519,7 +521,7 @@ public class PreferenceConstants {
 	 *
 	 * @since 5.0
 	 */
-	public final static String EDITOR_ASM_LABEL_ITALIC= ICColorConstants.ASM_LABEL + EDITOR_ITALIC_SUFFIX;
+	public final static String EDITOR_ASM_LABEL_ITALIC= IASMColorConstants.ASM_LABEL + EDITOR_ITALIC_SUFFIX;
 
 	/**
 	 * A named preference that holds the color used to render assembly directives.
@@ -532,7 +534,7 @@ public class PreferenceConstants {
 	 * @see org.eclipse.jface.preference.PreferenceConverter
 	 * @since 5.0
 	 */
-	public final static String EDITOR_ASM_DIRECTIVE_COLOR= ICColorConstants.ASM_DIRECTIVE;
+	public final static String EDITOR_ASM_DIRECTIVE_COLOR= IASMColorConstants.ASM_DIRECTIVE;
 
 	/**
 	 * A named preference that controls whether assembly directives are rendered in bold.
@@ -542,7 +544,7 @@ public class PreferenceConstants {
 	 *
 	 * @since 5.0
 	 */
-	public final static String EDITOR_ASM_DIRECTIVE_BOLD= ICColorConstants.ASM_DIRECTIVE + EDITOR_BOLD_SUFFIX;
+	public final static String EDITOR_ASM_DIRECTIVE_BOLD= IASMColorConstants.ASM_DIRECTIVE + EDITOR_BOLD_SUFFIX;
 
 	/**
 	 * A named preference that controls whether assembly directives are rendered in italic.
@@ -552,7 +554,73 @@ public class PreferenceConstants {
 	 *
 	 * @since 5.0
 	 */
-	public final static String EDITOR_ASM_DIRECTIVE_ITALIC= ICColorConstants.ASM_DIRECTIVE + EDITOR_ITALIC_SUFFIX;
+	public final static String EDITOR_ASM_DIRECTIVE_ITALIC= IASMColorConstants.ASM_DIRECTIVE + EDITOR_ITALIC_SUFFIX;
+
+	/**
+	 * A named preference that holds the color used to render assembly mnemonics.
+	 * <p>
+	 * Value is of type <code>String</code>. A RGB color value encoded as a string
+	 * using class <code>PreferenceConverter</code>
+	 * </p>
+	 *
+	 * @see org.eclipse.jface.resource.StringConverter
+	 * @see org.eclipse.jface.preference.PreferenceConverter
+	 * @since 5.3
+	 */
+	public final static String EDITOR_ASM_MNEMONIC_COLOR= IASMColorConstants.ASM_MNEMONIC;
+
+	/**
+	 * A named preference that controls whether assembly mnemonics are rendered in bold.
+	 * <p>
+	 * Value is of type <code>Boolean</code>.
+	 * </p>
+	 *
+	 * @since 5.3
+	 */
+	public final static String EDITOR_ASM_MNEMONIC_BOLD= IASMColorConstants.ASM_MNEMONIC + EDITOR_BOLD_SUFFIX;
+
+	/**
+	 * A named preference that controls whether assembly mnemonics are rendered in italic.
+	 * <p>
+	 * Value is of type <code>Boolean</code>.
+	 * </p>
+	 *
+	 * @since 5.3
+	 */
+	public final static String EDITOR_ASM_MNEMONIC_ITALIC= IASMColorConstants.ASM_MNEMONIC + EDITOR_ITALIC_SUFFIX;
+
+	/**
+	 * A named preference that holds the color used to render assembly branches.
+	 * <p>
+	 * Value is of type <code>String</code>. A RGB color value encoded as a string
+	 * using class <code>PreferenceConverter</code>
+	 * </p>
+	 *
+	 * @see org.eclipse.jface.resource.StringConverter
+	 * @see org.eclipse.jface.preference.PreferenceConverter
+	 * @since 5.3
+	 */
+	public final static String EDITOR_ASM_BRANCH_COLOR= IASMColorConstants.ASM_BRANCH;
+
+	/**
+	 * A named preference that controls whether assembly branches are rendered in bold.
+	 * <p>
+	 * Value is of type <code>Boolean</code>.
+	 * </p>
+	 *
+	 * @since 5.3
+	 */
+	public final static String EDITOR_ASM_BRANCH_BOLD= IASMColorConstants.ASM_BRANCH + EDITOR_BOLD_SUFFIX;
+
+	/**
+	 * A named preference that controls whether assembly branches are rendered in italic.
+	 * <p>
+	 * Value is of type <code>Boolean</code>.
+	 * </p>
+	 *
+	 * @since 5.3
+	 */
+	public final static String EDITOR_ASM_BRANCH_ITALIC= IASMColorConstants.ASM_BRANCH + EDITOR_ITALIC_SUFFIX;
 
 	/**
 	 * The symbolic font name for the C/C++ editor text font
@@ -571,7 +639,7 @@ public class PreferenceConstants {
 	public static final String PREF_LINK_TO_EDITOR= "org.eclipse.cdt.ui.editor.linkToEditor"; //$NON-NLS-1$
 
 	/**
-	 * A named preference that speficies whether children of a translation unit are shown in the CView.
+	 * A named preference that specifies whether children of a translation unit are shown in the CView.
 	 * <p>
 	 * Value is of type <code>Boolean</code>.
 	 * </p>
@@ -579,7 +647,7 @@ public class PreferenceConstants {
 	public static final String PREF_SHOW_CU_CHILDREN= "org.eclipse.cdt.ui.editor.CUChildren"; //$NON-NLS-1$
 
 	/**
-	 * A named preference that speficies whether to use the parser's structural mode to build the CModel.
+	 * A named preference that specifies whether to use the parser's structural mode to build the CModel.
 	 * <p>
 	 * Value is of type <code>Boolean</code>.
 	 * </p>
@@ -1918,13 +1986,22 @@ public class PreferenceConstants {
         store.setDefault(EDITOR_PP_DEFAULT_BOLD, false);
         store.setDefault(EDITOR_PP_DEFAULT_ITALIC, false);
 
-        PreferenceConverter.setDefault(store, EDITOR_ASM_LABEL_COLOR, new RGB(127, 0, 85));
+        // ASM colors
+        PreferenceConverter.setDefault(store, EDITOR_ASM_LABEL_COLOR, new RGB(22, 0, 128));
 		store.setDefault(EDITOR_ASM_LABEL_BOLD, true);
 		store.setDefault(EDITOR_ASM_LABEL_ITALIC, false);
 
         PreferenceConverter.setDefault(store, EDITOR_ASM_DIRECTIVE_COLOR, new RGB(127, 0, 85));
 		store.setDefault(EDITOR_ASM_DIRECTIVE_BOLD, true);
 		store.setDefault(EDITOR_ASM_DIRECTIVE_ITALIC, false);
+
+        PreferenceConverter.setDefault(store, EDITOR_ASM_MNEMONIC_COLOR, new RGB(163, 7, 43));
+        store.setDefault(EDITOR_ASM_MNEMONIC_BOLD, false);
+        store.setDefault(EDITOR_ASM_MNEMONIC_ITALIC, false);
+
+        PreferenceConverter.setDefault(store, EDITOR_ASM_BRANCH_COLOR, new RGB(163, 7, 43));
+        store.setDefault(EDITOR_ASM_BRANCH_BOLD, true);
+        store.setDefault(EDITOR_ASM_BRANCH_ITALIC, false);
 
 		// Folding
 		store.setDefault(PreferenceConstants.EDITOR_FOLDING_ENABLED, false);

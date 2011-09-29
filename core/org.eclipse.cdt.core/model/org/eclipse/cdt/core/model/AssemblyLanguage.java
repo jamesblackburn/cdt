@@ -35,7 +35,9 @@ import org.eclipse.core.runtime.IExecutableExtension;
  */
 public class AssemblyLanguage extends AbstractLanguage implements IAsmLanguage, IExecutableExtension {
 
-	private static final String[] DIRECTIVE_KEYWORDS= {
+	/** An array of Assembler directive keywords for this language
+	 * @since 5.3*/
+	protected static String[] DIRECTIVE_KEYWORDS= {
 		".set", ".section", //$NON-NLS-1$ //$NON-NLS-2$
 		".global", ".globl", ".extern", ".type", ".file", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
 		".if", ".ifdef", ".ifndef", ".else", ".endif", ".include", //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$
@@ -46,12 +48,20 @@ public class AssemblyLanguage extends AbstractLanguage implements IAsmLanguage, 
 		".short", ".word", ".float", ".single", ".double" //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$
 	};
 
+	/** Assembler Mnemonics of this language
+	 * @since 5.3*/
+	protected static String[] ASM_MNEMONICS = new String[] {};
+	/** The Mnemonics for the languages branhces 
+	 * @since 5.3*/
+	protected static String[] BRANCH_MNEMONICS = new String[] {};
+
+	private char[] fLineCommentCharacters= {};
+
+
 	private static final String DEFAULT_ID= "org.eclipse.cdt.core.assembly"; //$NON-NLS-1$
+	private String fId= DEFAULT_ID;
 
 	public static final AssemblyLanguage DEFAULT_INSTANCE= new AssemblyLanguage();
-
-	private String fId= DEFAULT_ID;
-	private char[] fLineCommentCharacters= {};
 
 	/**
 	 * @return the default language instance
@@ -133,6 +143,28 @@ public class AssemblyLanguage extends AbstractLanguage implements IAsmLanguage, 
 	 */
 	public String[] getDirectiveKeywords() {
 		return DIRECTIVE_KEYWORDS;
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * @see org.eclipse.cdt.core.model.IAsmLanguage#getMnemonics()
+	 */
+	/**
+	 * @since 5.3
+	 */
+	public String[] getMnemonics() {
+		return ASM_MNEMONICS; 
+	}
+	
+	/*
+	 * (non-Javadoc)
+	 * @see org.eclipse.cdt.core.model.IAsmLanguage#getBranchMnemonics()
+	 */
+	/**
+	 * @since 5.3
+	 */
+	public String[] getBranchMnemonics() {
+		return BRANCH_MNEMONICS;
 	}
 
 	/*
