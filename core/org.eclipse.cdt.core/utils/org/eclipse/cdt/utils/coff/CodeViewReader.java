@@ -13,7 +13,10 @@ package org.eclipse.cdt.utils.coff;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 
 import org.eclipse.cdt.core.ISymbolReader;
 import org.eclipse.core.runtime.IProgressMonitor;
@@ -51,6 +54,20 @@ public class CodeViewReader implements ISymbolReader {
 		}
 
 		return files;
+	}
+	
+	/**
+	 * @since 5.3
+	 */
+	public Map<String, LinkedHashSet<Include>> getIncludesPerSourceFile() {
+		return new HashMap<String, LinkedHashSet<Include>>();
+	}
+
+	/**
+	 * @since 5.3
+	 */
+	public Map<String, LinkedHashSet<Macro>> getExternallyDefinedMacros() {
+		return new HashMap<String, LinkedHashSet<Macro>>();
 	}
 
 	private int getInt(int value) {

@@ -437,6 +437,10 @@ public class DwarfConstants {
 	public final static int DW_LNE_define_file = 3;
 
 	/* DWARF macinfo type encodings. */
+	/**
+	 * @since 5.3
+	 */
+	public final static int DW_MACINFO_end_compile_unit = 0;
 	public final static int DW_MACINFO_define = 1;
 	public final static int DW_MACINFO_undef = 2;
 	public final static int DW_MACINFO_start_file = 3;

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.2"?>
+<plugin>
+   <extension
+         point="org.eclipse.ui.propertyPages">
+      <page
+            class="ResourceCfgDiscovery.ui.BinaryFilePropertyPage"
+            id="broadcom.binaryFilePage"
+            name="Binary Project Configuration">
+         <enabledWhen>
+            <instanceof
+                  value="org.eclipse.cdt.core.model.IBinary">
+            </instanceof>
+         </enabledWhen>
+      </page>
+   </extension>
+
+</plugin>

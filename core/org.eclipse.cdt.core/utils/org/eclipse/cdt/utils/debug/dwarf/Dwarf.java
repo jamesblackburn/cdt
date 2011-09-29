@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.eclipse.cdt.core.CCorePlugin;
+import org.eclipse.cdt.core.ISymbolReader.Macro;
 import org.eclipse.cdt.utils.coff.PE;
 import org.eclipse.cdt.utils.coff.Coff.SectionHeader;
 import org.eclipse.cdt.utils.debug.DebugUnknownType;
@@ -47,30 +48,31 @@ public class Dwarf {
 	final static String DWARF_DEBUG_WEAKNAMES = ".debug_weaknames"; //$NON-NLS-1$
 	final static String DWARF_DEBUG_MACINFO = ".debug_macinfo"; //$NON-NLS-1$
 	final static String[] DWARF_SCNNAMES =
-		{
-			DWARF_DEBUG_INFO,
-			DWARF_DEBUG_ABBREV,
-			DWARF_DEBUG_ARANGES,
-			DWARF_DEBUG_LINE,
-			DWARF_DEBUG_FRAME,
-			DWARF_EH_FRAME,
-			DWARF_DEBUG_LOC,
-			DWARF_DEBUG_PUBNAMES,
-			DWARF_DEBUG_STR,
-			DWARF_DEBUG_FUNCNAMES,
-			DWARF_DEBUG_TYPENAMES,
-			DWARF_DEBUG_VARNAMES,
-			DWARF_DEBUG_WEAKNAMES,
-			DWARF_DEBUG_MACINFO };
+	{
+		DWARF_DEBUG_INFO,
+		DWARF_DEBUG_ABBREV,
+		DWARF_DEBUG_ARANGES,
+		DWARF_DEBUG_LINE,
+		DWARF_DEBUG_FRAME,
+		DWARF_EH_FRAME,
+		DWARF_DEBUG_LOC,
+		DWARF_DEBUG_PUBNAMES,
+		DWARF_DEBUG_STR,
+		DWARF_DEBUG_FUNCNAMES,
+		DWARF_DEBUG_TYPENAMES,
+		DWARF_DEBUG_VARNAMES,
+		DWARF_DEBUG_WEAKNAMES,
+		DWARF_DEBUG_MACINFO 
+	};
 
-	class CompilationUnitHeader {
+	static class CompilationUnitHeader {
 		int length;
 		short version;
 		int abbreviationOffset;
 		byte addressSize;
 		@Override
 		public String toString() {
-			StringBuffer sb = new StringBuffer();
+			StringBuilder sb = new StringBuilder();
 			sb.append("Length: " + length).append("\n"); //$NON-NLS-1$ //$NON-NLS-2$
 			sb.append("Version: " + version).append("\n"); //$NON-NLS-1$ //$NON-NLS-2$
 			sb.append("Abbreviation: " + abbreviationOffset).append("\n"); //$NON-NLS-1$ //$NON-NLS-2$
@@ -79,7 +81,7 @@ public class Dwarf {
 		}
 	}
 
-	class AbbreviationEntry {
+	static class AbbreviationEntry {
 		/* unsigned */
 		long code;
 		/* unsigned */
@@ -94,7 +96,7 @@ public class Dwarf {
 		}
 	}
 
-	class Attribute {
+	static class Attribute {
 		/* unsigned */
 		long name;
 		/* unsigned */
@@ -105,7 +107,7 @@ public class Dwarf {
 		}
 		@Override
 		public String toString() {
-			StringBuffer sb = new StringBuffer();
+			StringBuilder sb = new StringBuilder();
 			sb.append("name: " + Long.toHexString(name)); //$NON-NLS-1$
 			sb.append(" value: " + Long.toHexString(form)); //$NON-NLS-1$
 			return sb.toString();
@@ -121,7 +123,7 @@ public class Dwarf {
 		}
 		@Override
 		public String toString() {
-			StringBuffer sb = new StringBuffer();
+			StringBuilder sb = new StringBuilder();
 			sb.append(attribute.toString()).append(' ');
 			if (value != null) {
 				Class<? extends Object> clazz = value.getClass();
@@ -149,7 +151,7 @@ public class Dwarf {
 		}
 	}
 
-	class CompileUnit {
+	static class CompileUnit {
 		long lowPC;
 		long highPC;
 		int stmtList;
@@ -159,6 +161,112 @@ public class Dwarf {
 		String compDir;
 		String producer;
 		int identifierCase;
+	}
+	
+	class MacroInfo {
+		int type;
+		/** offset in the macro info section */
+		int offset;
+		/** line number of this defined macro info */
+		long line;
+		/** index into the line number information table
+		 * for locating the source file */
+		long index;
+		/** The actual macro text */
+		String macro;
+
+		/**
+		 * Convert a MacroInfo to a ISymbolReader.Macro
+		 * @return
+		 * @throws RuntimeException if the operation is not supported
+		 */
+		public Macro toMacro() {
+			Macro.TYPE type;
+			switch (this.type) {
+			case DwarfConstants.DW_MACINFO_define:
+				type = Macro.TYPE.DEFINED;
+				break;
+			case DwarfConstants.DW_MACINFO_undef:
+				type = Macro.TYPE.UNDEFINED;
+				break;
+			case DwarfConstants.DW_MACINFO_vendor_ext:
+				type = Macro.TYPE.VENDOR;
+				break;
+			default:
+				throw new RuntimeException("Can't convert MacroInfo to ISymbol.Macro");
+			}
+			return new Macro(type, macro);
+		}
+		
+		public MacroInfo(int offset, ByteBuffer in) throws IOException {
+			this.offset = offset;
+			this.type = in.get();
+
+			// Types:
+			// define / undefine:
+			//		2 operands: <u_leb128> line_number ; <String> macro
+			// vendor_ext:
+			//		2 operands: <u_leb128> constant ; <String> 
+			// start_file:
+			// 		2 operands: <u_leb128> line_number of inclusion : 
+			//					<u_leb128> file index of line entry table
+			// end_file;
+			//		None
+			switch (type) {
+			case DwarfConstants.DW_MACINFO_define:
+			case DwarfConstants.DW_MACINFO_undef:
+				this.line = read_unsigned_leb128(in);
+				this.index = -1;
+				this.macro = readString(in);
+				break;
+			case DwarfConstants.DW_MACINFO_start_file:
+				this.line = read_unsigned_leb128(in);
+				this.index = read_unsigned_leb128(in);
+				this.macro = "";
+				break;
+			case DwarfConstants.DW_MACINFO_end_file:
+			case DwarfConstants.DW_MACINFO_end_compile_unit:
+				break;
+			case DwarfConstants.DW_MACINFO_vendor_ext:
+				this.line = read_unsigned_leb128(in);
+				this.index = -1;
+				this.macro = read_unsigned_leb128(in) + " " +readString(in);
+				break;
+			default:
+				throw new RuntimeException("Unknown MacroInfoType: " + type);
+			}
+
+		}
+		
+		@Override
+		public String toString() {
+			StringBuilder sb = new StringBuilder();
+			sb.append(offset).append(" ").append(type); //$NON-NLS-1$
+			switch (type) {
+			case DwarfConstants.DW_MACINFO_define:
+				sb.append("define\t"); //$NON-NLS-1$
+				break;
+			case DwarfConstants.DW_MACINFO_undef:
+				sb.append("undef\t"); //$NON-NLS-1$
+				break;
+			case DwarfConstants.DW_MACINFO_start_file:
+				sb.append("start_file\t"); //$NON-NLS-1$
+				sb.append(index);
+				break;
+			case DwarfConstants.DW_MACINFO_end_file:
+				sb.append("end_file"); //$NON-NLS-1$
+				return sb.toString();
+			case DwarfConstants.DW_MACINFO_vendor_ext:
+				sb.append("vendor_ext\t"); //$NON-NLS-1$
+				break;
+			case DwarfConstants.DW_MACINFO_end_compile_unit:
+				return sb.append("CompUnit_END").toString(); //$NON-NLS-1$
+			default:
+				sb.append("UNKNOWN!\t"); //$NON-NLS-1$
+			}
+			sb.append(" [").append(line).append("]").append("\t").append(macro);  //$NON-NLS-1$ //$NON-NLS-2$//$NON-NLS-3$
+			return sb.toString();
+		}
 	}
 
 	Map<String, ByteBuffer> dwarfSections = new HashMap<String, ByteBuffer>();
@@ -358,6 +466,10 @@ public class Dwarf {
 		return result;
 	}
 
+	/**
+	 * Parse the .debug_info section
+	 * @param requestor
+	 */
 	public void parse(IDebugEntryRequestor requestor) {
 		parseDebugInfo(requestor);
 	}
@@ -394,6 +506,67 @@ public class Dwarf {
 				e.printStackTrace();
 			}
 		}
+	}
+
+	/**
+	 * Parse the Macro Info for at the requested offset
+	 * 
+	 * @param offset Integer offset of the Compilation unit's macinfo, use -1 to parse all MacroInfo for all files
+	 * @param external boolean flag indicates that parsing should stop after externally defined Macros
+	 * 			have been processed
+	 * @return Collection of MacroInfo
+	 */
+	List<MacroInfo> parseMacroInfo(int offset, boolean external) {
+		ByteBuffer data = dwarfSections.get(DWARF_DEBUG_MACINFO);
+		ArrayList<MacroInfo> infoArray = new ArrayList<MacroInfo>();
+		if (data != null) {
+			try {
+				String indentation = "  ";
+				int i = 0;
+				if (printEnabled) {
+					System.out.println("Macro Info");
+					System.out.println("# Offset  Type  {file_index} [line]  Text");
+				}
+
+				if (offset > 0)
+					data.position(offset);
+
+				// Loop while data available
+				while (data.hasRemaining()) {
+					int mi_offset = data.capacity() - data.remaining();
+					MacroInfo mi = new MacroInfo(mi_offset, data);					
+
+					if (printEnabled) {
+						if (mi.type == DwarfConstants.DW_MACINFO_start_file)
+							indentation += "  ";
+						else if (mi.type == DwarfConstants.DW_MACINFO_end_file)
+							indentation = indentation.substring(0, indentation.length()-2);
+						System.out.println(i++ + indentation + mi.toString());
+					}
+
+					// If not showing all macinfos, and come to end of this CU -> break
+					if (offset > -1 && mi.type == DwarfConstants.DW_MACINFO_end_compile_unit)
+						break;
+
+					// if only showing external defined -Ds, break if we start processing
+					// a #include'd source file, or we reach an end of file (i.e. nothing included)
+					if (external) {
+						if (mi.type == DwarfConstants.DW_MACINFO_end_file)
+							break;
+						if (mi.type == DwarfConstants.DW_MACINFO_start_file)
+							if  (mi.line != 0)
+								break; // End of external defines
+							else 
+								continue; // Don't add initial start_file
+					}
+						
+					infoArray.add(mi);
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		return infoArray;
 	}
 
 	Map<Long, AbbreviationEntry> parseDebugAbbreviation(CompilationUnitHeader header) throws IOException {
@@ -597,6 +770,41 @@ public class Dwarf {
 
 		return obj;
 	}
+	
+	/**
+	 * Read a null-ended string from the given "data" stream starting at the given "offset".
+	 * data	:  IN, byte stream
+	 * offset: IN, offset in the stream
+	 */
+	String readString(byte[] data, int offset) {
+		StringBuilder sb = new StringBuilder();
+		for (; offset < data.length; offset++) {
+			byte c = data[offset];
+			if (c == 0) {
+				break;
+			}
+			sb.append((char) c);
+		}
+		return sb.toString();
+	}
+	
+	/**
+	 * Read a NULL terminated String from the InputStream
+	 * @param in InputStream
+	 * @return String
+	 * @throws IOException
+	 */
+	String readString(ByteBuffer in) throws IOException {
+		StringBuilder sb = new StringBuilder();
+		int i = in.get();
+		while (in.hasRemaining()) {
+			if (i == 0)
+				break;
+			sb.append((char)i);
+			i = in.get();
+		}
+		return sb.toString();
+	}
 
 	void processDebugInfoEntry(IDebugEntryRequestor requestor, AbbreviationEntry entry, List<AttributeValue> list) {
 		int len = list.size();
@@ -781,9 +989,10 @@ public class Dwarf {
 
 	public static void main(String[] args) {
 		try {
-			DebugSymsRequestor symreq = new DebugSymsRequestor();				
+			DebugSymsRequestor symreq = new DebugSymsRequestor();
 			Dwarf dwarf = new Dwarf(args[0]);
 			dwarf.parse(symreq);
+			dwarf.parseMacroInfo(-1, false); // print all macro infos
 			DebugSym[] entries = symreq.getEntries();
 			for (DebugSym entry : entries) {
 				System.out.println(entry);
