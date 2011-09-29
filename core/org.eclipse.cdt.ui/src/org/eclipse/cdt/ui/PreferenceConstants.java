@@ -12,6 +12,7 @@
  * 	   Sergey Prigogin (Google)
  *     Elazar Leibovich (IDF) - Code folding of compound statements (bug 174597)
  *     Jens Elmenthaler (Verigy) - http://bugs.eclipse.org/235586
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui;
 
@@ -571,7 +572,7 @@ public class PreferenceConstants {
 	public static final String PREF_LINK_TO_EDITOR= "org.eclipse.cdt.ui.editor.linkToEditor"; //$NON-NLS-1$
 
 	/**
-	 * A named preference that speficies whether children of a translation unit are shown in the CView.
+	 * A named preference that specifies whether children of a translation unit are shown in the CView.
 	 * <p>
 	 * Value is of type <code>Boolean</code>.
 	 * </p>
@@ -579,12 +580,30 @@ public class PreferenceConstants {
 	public static final String PREF_SHOW_CU_CHILDREN= "org.eclipse.cdt.ui.editor.CUChildren"; //$NON-NLS-1$
 
 	/**
-	 * A named preference that speficies whether to use the parser's structural mode to build the CModel.
+	 * A named preference that specifies whether to use the parser's structural mode to build the CModel.
 	 * <p>
 	 * Value is of type <code>Boolean</code>.
 	 * </p>
 	 */
 	public static final String PREF_USE_STRUCTURAL_PARSE_MODE= "org.eclipse.cdt.ui.editor.UseStructuralMode"; //$NON-NLS-1$
+
+	/**
+	 * A named preference that specifies whether the Build Action builds the current selection, or runs the last build.
+	 * <p>
+	 * Value is of type <code>Boolean</code>.
+	 * </p>
+	 * @since 5.3
+	 */
+	public static final String PREF_BUILD_CURRENT_SELECTION = "org.eclipse.cdt.ui.build.CurrentSelection"; //$NON-NLS-1$
+
+	/**
+	 * A named preference that specifies the size of the build history.
+	 * <p>
+	 * Value is of type <code>Integer</code>.
+	 * </p>
+	 * @since 5.3
+	 */
+	public static final String PREF_BUILD_HISTORY_SIZE = "org.eclipse.cdt.ui.build.HistorySize"; //$NON-NLS-1$
 
 	/**
 	 * A named preference that controls if segmented view (show selected element only) is turned on or off.

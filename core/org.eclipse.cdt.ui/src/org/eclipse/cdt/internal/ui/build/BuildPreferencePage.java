@@ -16,6 +16,9 @@ package org.eclipse.cdt.internal.ui.build;
 
 import org.eclipse.jface.dialogs.Dialog;
 import org.eclipse.jface.dialogs.IDialogConstants;
+import org.eclipse.jface.preference.FieldEditor;
+import org.eclipse.jface.preference.IPreferenceStore;
+import org.eclipse.jface.preference.IntegerFieldEditor;
 import org.eclipse.jface.preference.PreferencePage;
 import org.eclipse.jface.resource.JFaceResources;
 import org.eclipse.swt.SWT;
@@ -33,6 +36,7 @@ import org.eclipse.ui.PlatformUI;
 
 import org.eclipse.cdt.core.resources.ACBuilder;
 import org.eclipse.cdt.ui.CUIPlugin;
+import org.eclipse.cdt.ui.PreferenceConstants;
 
 import org.eclipse.cdt.internal.ui.ICHelpContextIds;
 import org.eclipse.cdt.internal.ui.preferences.PreferencesMessages;
@@ -41,9 +45,26 @@ import org.eclipse.cdt.internal.ui.preferences.PreferencesMessages;
  * The page for top-level build preferences
  */
 public class BuildPreferencePage extends PreferencePage implements IWorkbenchPreferencePage {
+
+	/** Default value for building current selection vs. running last build */
+	public static final boolean PREF_BUILD_CURRENT_SELECTION_DEFAULT = true;
+	/** Default value for the history size */
+	public static final int PREF_BUILD_HISTORY_SIZE_DEFAULT = 5;
+
 	private static final int GROUP_VINDENT = 5;
 	private static final int GROUP_HINDENT = 20;
-	private Button buildActive, buildAll, buildOnlyOnRefChange;
+	private Button buildActive, buildAll, buildOnlyOnRefChange, alwaysBuildStaticLibs, stopOnError;
+	// Build selection vs. Build history
+	private Button buildSelected, buildLast;
+	private FieldEditor buildHistorySize;
+
+	/**
+	 * Helper method to discover if we're currently configured to build from the current selection
+	 * @return boolean whether we're configured to build from current selection
+	 */
+	public static boolean isBuildCurrentSelection() {
+		return PreferenceConstants.getPreference(PreferenceConstants.PREF_BUILD_CURRENT_SELECTION, null, PREF_BUILD_CURRENT_SELECTION_DEFAULT);
+	}
 
 	public BuildPreferencePage() {
 		super();
@@ -97,13 +118,41 @@ public class BuildPreferencePage extends PreferencePage implements IWorkbenchPre
 		addNote(gr, PreferencesMessages.CPluginPreferencePage_4);
 
 		// Building project dependencies.
-		Group gr2 = addGroup(container, PreferencesMessages.CPluginPreferencePage_building_configurations);
-		buildOnlyOnRefChange = new Button(gr2, SWT.CHECK);
+		gr = addGroup(container, PreferencesMessages.CPluginPreferencePage_building_configurations);
+		buildOnlyOnRefChange = new Button(gr, SWT.CHECK);
 		buildOnlyOnRefChange.setText(PreferencesMessages.CPluginPreferencePage_7);
-		GridData gd2 = new GridData(GridData.FILL_HORIZONTAL);
-		gd2.verticalIndent = GROUP_VINDENT;
-		buildOnlyOnRefChange.setLayoutData(gd2);
+		gd = new GridData(GridData.FILL_HORIZONTAL);
+		gd.verticalIndent = GROUP_VINDENT;
+		buildOnlyOnRefChange.setLayoutData(gd);
 		buildOnlyOnRefChange.setSelection(ACBuilder.buildConfigResourceChanges());
+
+		// Build selected vs build history
+		boolean bs = isBuildCurrentSelection();
+		gr = addGroup(container, PreferencesMessages.BuildPreferencePage_RunningABuild, 2);
+		Composite spacer = createComposite(gr, 1, 1, GridData.FILL_HORIZONTAL);
+		buildSelected = new Button(spacer, SWT.RADIO);
+		buildSelected.setText(PreferencesMessages.BuildPreferencePage_BuildSelected);
+		gd = new GridData(GridData.FILL_HORIZONTAL);
+		buildSelected.setLayoutData(gd);
+		buildSelected.setSelection(bs);
+
+		buildLast = new Button(spacer, SWT.RADIO);
+		buildLast.setText(PreferencesMessages.BuildPreferencePage_BuildHistory);
+		gd = new GridData(GridData.FILL_HORIZONTAL);
+		buildLast.setLayoutData(gd);
+		buildLast.setSelection(!bs);
+
+		// history list size
+		Composite forHist = new Composite(spacer, SWT.NONE);
+		forHist.setLayout(new GridLayout(1, false));
+    	gd = new GridData(GridData.FILL_HORIZONTAL);
+    	gd.horizontalIndent = GROUP_HINDENT;
+    	forHist.setLayoutData(gd);
+		buildHistorySize = new IntegerFieldEditor(PreferenceConstants.PREF_BUILD_HISTORY_SIZE, PreferencesMessages.BuildPreferencePage_BuildHistorySize, forHist, 2);
+		buildHistorySize.setPage(this);
+		buildHistorySize.setPreferenceStore(getPreferenceStore());
+		buildHistorySize.fillIntoGrid(forHist, 2);
+		buildHistorySize.load();
 
 		Dialog.applyDialogFont(container);
 		return container;
@@ -115,6 +164,16 @@ public class BuildPreferencePage extends PreferencePage implements IWorkbenchPre
 		GridData gd = new GridData(GridData.HORIZONTAL_ALIGN_FILL);
 		gd.verticalIndent = GROUP_VINDENT;
 		noteControl.setLayoutData(gd);
+	}
+
+	public static Composite createComposite(Composite parent, int columns, int hspan, int fill) {
+		Composite g = new Composite(parent, SWT.NONE);
+    	g.setLayout(new GridLayout(columns, false));
+    	g.setFont(parent.getFont());
+    	GridData gd = new GridData(fill);
+		gd.horizontalSpan = hspan;
+    	g.setLayoutData(gd);
+    	return g;
 	}
 
 	@Override
@@ -149,6 +208,21 @@ public class BuildPreferencePage extends PreferencePage implements IWorkbenchPre
 	public void init(IWorkbench workbench) {
 	}
 
+	/**
+	 * Initializes the default values of this page in the preference bundle.
+	 */
+	public static void initDefaults(IPreferenceStore prefs) {
+		prefs.setDefault(PreferenceConstants.PREF_BUILD_CURRENT_SELECTION, PREF_BUILD_CURRENT_SELECTION_DEFAULT);
+		prefs.setDefault(PreferenceConstants.PREF_BUILD_HISTORY_SIZE, PREF_BUILD_HISTORY_SIZE_DEFAULT);
+	}
+
+	@Override
+	public boolean isValid() {
+		if (!buildHistorySize.isValid())
+			return false;
+		return super.isValid();
+	}
+
 	/* (non-Javadoc)
 	 * @see org.eclipse.jface.preference.IPreferencePage#performOk()
 	 */
@@ -156,19 +230,31 @@ public class BuildPreferencePage extends PreferencePage implements IWorkbenchPre
 	public boolean performOk() {
 		if (!super.performOk())
 			return false;
+		if (!isValid())
+			return false;
 		// tell the Core Plugin about this preference
 		ACBuilder.setAllConfigBuild(buildAll.getSelection());
 		ACBuilder.setBuildConfigResourceChanges(buildOnlyOnRefChange.getSelection());
+		// Build selected and build history
+		getPreferenceStore().setValue(PreferenceConstants.PREF_BUILD_CURRENT_SELECTION, buildSelected.getSelection());
+		buildHistorySize.store();
 		return true;
 	}
 
     @Override
 	protected void performDefaults() {
 		ACBuilder.setAllConfigBuild(false);
-		ACBuilder.setBuildConfigResourceChanges(false);
+		ACBuilder.setBuildConfigResourceChanges(true);
 		buildActive.setSelection(true);
 		buildAll.setSelection(false);
-		buildOnlyOnRefChange.setSelection(false);
+		buildOnlyOnRefChange.setSelection(true);
+		alwaysBuildStaticLibs.setSelection(false);
+		stopOnError.setSelection(true);
+
+		// Build selected and build history
+		buildSelected.setSelection(getPreferenceStore().getDefaultBoolean(PreferenceConstants.PREF_BUILD_CURRENT_SELECTION));
+		buildLast.setSelection(!buildSelected.getSelection());
+		buildHistorySize.loadDefault();
     	super.performDefaults();
     }
 }

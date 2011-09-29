@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2006, 2008 Intel Corporation and others.
+ * Copyright (c) 2006, 2011 Intel Corporation and others.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Eclipse Public License v1.0
  * which accompanies this distribution, and is available at
@@ -8,6 +8,7 @@
  * Contributors:
  *     Intel Corporation - initial API and implementation
  *     Warren Paul (Nokia) - bug 200420.
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui.actions;
 
@@ -38,6 +39,7 @@ import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.ui.CUIPlugin;
 
+import org.eclipse.cdt.internal.ui.build.BuildHistoryEntry;
 import org.eclipse.cdt.internal.ui.cview.IncludeRefContainer;
 import org.eclipse.cdt.internal.ui.cview.IncludeReferenceProxy;
 
@@ -89,8 +91,10 @@ public class ChangeBuildConfigActionBase {
 				}
 			}
 		}
-		
-		int accel = 0;
+
+		int accel = 1;
+
+		// Add items from the current selection
 		for (String sName : configNames) {
 			String sDesc = null;
 			boolean commonName = true;
@@ -133,21 +137,37 @@ public class ChangeBuildConfigActionBase {
 					builder.append(" (...)");	//$NON-NLS-1$
 				}
 					
-				IAction action = makeAction(sName ,builder, accel);
+				IAction action = makeAction(sName ,builder, accel++);
 				if (bCurrentConfig && sCurrentConfig != null && sCurrentConfig.equals(sName)) {
 					action.setChecked(true);
 				}
 				ActionContributionItem item = new ActionContributionItem(action);
 				item.fill(menu, -1);
-				accel++;
 			}
 		}
+
+		// Add any additional items to the menu
+		additionalFill(menu, accel);
 	}
 
 	protected IAction makeAction(String sName, StringBuffer builder, int accel) {
-		return new ChangeConfigAction(fProjects, sName, builder.toString(), accel + 1);
+		return new ChangeConfigAction(fProjects, sName, builder.toString(), accel);
 	}
 
+	/**
+	 * @since 5.3
+	 */
+	protected IAction makeAction(BuildHistoryEntry e, int accel) {
+		return new ChangeConfigAction(e, accel);
+	}
+
+	/**
+	 * Add any additional entries to the menu
+	 * @since 5.3
+	 */
+	protected void additionalFill(Menu menu, int accel) {
+	}
+	
 	/**
 	 * selectionChanged() event handler. Fills the list of managed-built projects 
 	 * based on the selection. If some non-managed-built projects are selected,

@@ -71,6 +71,10 @@ public class BuildConfigurationsJob extends Job {
 		// Setup the global build console
 		CUIPlugin.getDefault().startGlobalConsole();
 
+//		// Add the build configurations being build to the build history
+//		if (configurations != null && configurations.length > 0)
+//			BuildHistory.addBuildHistory(new BuildHistoryEntry(configurations));
+
 		IConfiguration[] cfgs = new IConfiguration[cfgDescriptions.length];
 		for (int i=0; i<cfgDescriptions.length; i++) {
 			cfgs[i] = ManagedBuildManager.getConfigurationForDescription(cfgDescriptions[i]);

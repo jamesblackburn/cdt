@@ -11,6 +11,7 @@
  *******************************************************************************/
 package org.eclipse.cdt.internal.ui.cview;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -18,6 +19,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import org.eclipse.core.resources.IBuildConfiguration;
 import org.eclipse.core.resources.ICommand;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IProject;
@@ -41,7 +43,11 @@ import org.eclipse.ui.actions.BuildAction;
 import org.eclipse.ui.ide.IDEActionFactory;
 import org.eclipse.ui.ide.ResourceUtil;
 
+import org.eclipse.cdt.core.resources.ACBuilder;
 import org.eclipse.cdt.ui.CUIPlugin;
+
+import org.eclipse.cdt.internal.ui.build.BuildHistory;
+import org.eclipse.cdt.internal.ui.build.BuildHistoryEntry;
 
 /**
  * This is the action group for workspace actions such as Build
@@ -49,18 +55,22 @@ import org.eclipse.cdt.ui.CUIPlugin;
 public class BuildGroup extends CViewActionGroup {
 
 	/**
-	 * An internal class which overrides the 'shouldPerformResourcePruning'
-	 * method so that referenced projects aren't build twice . (The CDT
-	 * managedbuild builds CDT reference project configuration as part of
-	 * building the top-level project).
-	 *
-	 * Also ensure that files in referenced projects are saved automatically
-	 * before build.
+	 * An internal class which ensures that files in referenced projects are
+	 * saved automatically before build, and that all config build setting is used.
 	 */
 	public static class CDTBuildAction extends BuildAction {
+
+		private List<IBuildConfiguration> configsToBuild;
+
 	    public CDTBuildAction(IShellProvider shell, int kind) {
 	        super(shell, kind);
 	    }
+
+	    @Override
+	    protected String getOperationMessage() {
+	    	return "Building project(s): " + getBuildConfigurationsToBuild();
+	    }
+
 	    @Override
 	    @SuppressWarnings("unchecked")
 	    public void run() {
@@ -70,20 +80,87 @@ public class BuildGroup extends CViewActionGroup {
 	    		IProject project = resource.getProject();
 	    		if (project != null) {
 	    			prjs.add(project);
+	    		}
+	    	}
+	    	Set<IProject> buffer = new HashSet<IProject>();
+	    	int size = -1;
+	    	while (size != prjs.size()) {
+	    		size = prjs.size();
+	    		for (IProject project : prjs) {
 	    			try {
-	    				prjs.addAll(Arrays.asList(project.getReferencedProjects()));
+	    				buffer.addAll(Arrays.asList(project.getReferencedProjects()));
 	    			} catch (CoreException e) {
 	    				// Project not accessible or not open
 	    			}
 	    		}
+	    		prjs.addAll(buffer);
+	    		buffer.clear();
 	    	}
 	    	saveEditors(prjs);
 
 			// Clear the build console, and open a stream
 			CUIPlugin.getDefault().startGlobalConsole();
 
+			// Add the build configurations we're about to build to the BuildHistory.
+			List<IBuildConfiguration> configs = getBuildConfigurationsToBuild();
+			if (configs != null && !configs.isEmpty())
+				BuildHistory.addBuildHistory(new BuildHistoryEntry(configs.toArray(new IBuildConfiguration[configs.size()])));
+
 	    	// Now delegate to the parent
 	    	super.run();
+	    }
+
+	    /**
+	     * Override {@link BuildAction#getBuildConfigurationsToBuild()} to allow
+	     * optional building of all configurations.
+	     */
+		@Override
+		protected List<IBuildConfiguration> getBuildConfigurationsToBuild() {
+			if (configsToBuild != null)
+				return configsToBuild;
+			Set<IBuildConfiguration> variants = new HashSet<IBuildConfiguration>(3);
+			for (IResource resource : (List<IResource>) getSelectedResources()) {
+				IProject project = resource.getProject();
+				if (project != null && hasBuilder2(project)) {
+					try {
+						if (ACBuilder.needAllConfigBuild())
+							variants.addAll(Arrays.asList(project.getBuildConfigs()));
+						else
+							variants.add(project.getActiveBuildConfig());
+					} catch(CoreException e) {
+						// Ignore project
+					}
+				}
+			}
+			return new ArrayList<IBuildConfiguration>(variants);
+		}
+
+		/**
+		 * Explicitly set the build configurations which need building.
+		 * @param configs
+		 */
+		public void setBuildConfigurationToBuild(List<IBuildConfiguration> configs) {
+			configsToBuild = configs;
+		}
+
+	    /**
+	     * Taken from inaccessible {@link BuildAction#hasBuilder(IProject)}
+	     */
+		boolean hasBuilder2(IProject project) {
+			if (!project.isAccessible())
+				return false;
+	        try {
+	            ICommand[] commands = project.getDescription().getBuildSpec();
+	            if (commands.length > 0) {
+	                return true;
+	            }
+	        } catch (CoreException e) {
+	            // this method is called when selection changes, so
+	            // just fall through if it fails.
+	            // this shouldn't happen anyway, since the list of selected resources
+	            // has already been checked for accessibility before this is called
+	        }
+	        return false;
 	    }
 
 	    /**

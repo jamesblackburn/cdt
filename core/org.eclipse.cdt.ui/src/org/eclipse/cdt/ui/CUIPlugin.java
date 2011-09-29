@@ -12,6 +12,7 @@
  *     Anton Leherbauer (Wind River Systems)
  *     Jeff Johnston (Red Hat Inc.)
  *     Sergey Prigogin (Google)
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui;
 
@@ -88,6 +89,7 @@ import org.eclipse.cdt.internal.ui.CElementAdapterFactory;
 import org.eclipse.cdt.internal.ui.ICStatusConstants;
 import org.eclipse.cdt.internal.ui.IContextMenuConstants;
 import org.eclipse.cdt.internal.ui.ResourceAdapterFactory;
+import org.eclipse.cdt.internal.ui.build.BuildHistory;
 import org.eclipse.cdt.internal.ui.buildconsole.BuildConsoleManager;
 import org.eclipse.cdt.internal.ui.buildconsole.GlobalBuildConsoleManager;
 import org.eclipse.cdt.internal.ui.editor.ASTProvider;
@@ -628,6 +630,9 @@ public class CUIPlugin extends AbstractUIPlugin {
 		}
 		
 		ContentAssistPreference.shutdown();
+
+		// Persist any build launch history
+		BuildHistory.save();
 
 		// Do this last.
 		super.stop(context);

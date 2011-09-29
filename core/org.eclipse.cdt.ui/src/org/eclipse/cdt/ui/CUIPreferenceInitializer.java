@@ -1,5 +1,5 @@
 /*******************************************************************************
- *  Copyright (c) 2003, 2009 IBM Corporation and others.
+ *  Copyright (c) 2003, 2011 IBM Corporation and others.
  *  All rights reserved. This program and the accompanying materials
  *  are made available under the terms of the Eclipse Public License v1.0
  *  which accompanies this distribution, and is available at
@@ -7,9 +7,11 @@
  * 
  *  Contributors:
  *     QNX Software Systems - Initial implementation
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.ui;
 
+import org.eclipse.cdt.internal.ui.build.BuildPreferencePage;
 import org.eclipse.cdt.internal.ui.cview.CView;
 import org.eclipse.cdt.internal.ui.editor.SemanticHighlightings;
 import org.eclipse.cdt.internal.ui.preferences.BuildConsolePreferencePage;
@@ -40,6 +42,7 @@ public class CUIPreferenceInitializer extends AbstractPreferenceInitializer {
 
         PreferenceConstants.initializeDefaultValues(store);
 		CPluginPreferencePage.initDefaults(store);
+		BuildPreferencePage.initDefaults(store);
 		BuildConsolePreferencePage.initDefaults(store);
 		CView.initDefaults(store);
 		CEditorPreferencePage.initDefaults(store);

@@ -1,5 +1,5 @@
 /*******************************************************************************
- *  Copyright (c) 2001, 2010 IBM Corporation and others.
+ *  Copyright (c) 2001, 2011 IBM Corporation and others.
  *  All rights reserved. This program and the accompanying materials
  *  are made available under the terms of the Eclipse Public License v1.0
  *  which accompanies this distribution, and is available at
@@ -8,6 +8,7 @@
  *  Contributors:
  *     Rational Software - initial implementation
  *     Sergey Prigogin (Google)
+ *     James Blackburn (Broadcom Corp.)
  *******************************************************************************/
 package org.eclipse.cdt.internal.ui.actions;
 
@@ -74,6 +75,7 @@ public class ActionMessages extends NLS {
 	public static String ExcludeFromBuildAction_1;
 	public static String BuildActiveConfigMenuAction_defaultTooltip;
 	public static String BuildActiveConfigMenuAction_buildConfigTooltip;
+	public static String BuildActiveConfigMenuAction_RunLastBuild;
 	public static String SurroundWithTemplateMenuAction_SubMenuName;
 	public static String SurroundWithTemplateMenuAction_ConfigureTemplatesActionName;
 	public static String SurroundWithTemplateMenuAction_NoneApplicable;
