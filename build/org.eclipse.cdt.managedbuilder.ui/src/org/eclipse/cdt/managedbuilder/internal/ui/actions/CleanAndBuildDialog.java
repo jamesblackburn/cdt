@@ -21,7 +21,9 @@ import org.eclipse.cdt.managedbuilder.ui.properties.ManagedBuilderUIImages;
 import org.eclipse.cdt.managedbuilder.ui.properties.ManagedBuilderUIPlugin;
 import org.eclipse.cdt.ui.CUIPlugin;
 import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.IncrementalProjectBuilder;
+import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.IDialogSettings;
@@ -109,6 +111,9 @@ public class CleanAndBuildDialog extends MessageDialog {
 	}
 
 	private class ConfigurationContentProvider implements ITreeContentProvider {
+
+		IWorkspaceRoot wr = ResourcesPlugin.getWorkspace().getRoot();
+
 		/* (non-Javadoc)
 		 * @see org.eclipse.jface.viewers.IContentProvider#inputChanged(org.eclipse.jface.viewers.Viewer, java.lang.Object, java.lang.Object)
 		 */
@@ -125,15 +130,17 @@ public class CleanAndBuildDialog extends MessageDialog {
 		 * @see org.eclipse.jface.viewers.IStructuredContentProvider#getElements(java.lang.Object)
 		 */
 		public Object[] getElements(Object inputElement) {
-			return getChildren(inputElement);
+			if (projects.length > 1)
+				return new Object[] {wr};
+			return projects;
 		}
 
 		/* (non-Javadoc)
 		 * @see org.eclipse.jface.viewers.ITreeContentProvider#hasChildren(java.lang.Object)
 		 */
 		public boolean hasChildren(Object element) {
-			if (element instanceof IProject[])
-				return ((IProject[]) element).length > 0;
+			if (element instanceof IWorkspaceRoot)
+				return projects.length > 0;
 
 			if (element instanceof IProject) {
 				IProject project = (IProject) element;
@@ -151,9 +158,11 @@ public class CleanAndBuildDialog extends MessageDialog {
 		 * @see org.eclipse.jface.viewers.ITreeContentProvider#getParent(java.lang.Object)
 		 */
 		public Object getParent(Object element) {
-			if (element instanceof IProject) {
-				return projects;
-			}
+			if (element instanceof IProject)
+				if (projects.length > 0)
+					return wr;
+				else
+					return projects;
 			if (element instanceof ICConfigurationDescription) {
 				ICConfigurationDescription cfgDescription = (ICConfigurationDescription) element;
 				return cfgDescription.getProjectDescription().getProject();
@@ -165,8 +174,8 @@ public class CleanAndBuildDialog extends MessageDialog {
 		 * @see org.eclipse.jface.viewers.ITreeContentProvider#getChildren(java.lang.Object)
 		 */
 		public Object[] getChildren(Object parentElement) {
-			if (parentElement instanceof IProject[])
-				return (IProject[]) parentElement;
+			if (parentElement instanceof IWorkspaceRoot)
+				return projects;
 
 			if (parentElement instanceof IProject) {
 				IProject project = (IProject) parentElement;
@@ -270,7 +279,7 @@ public class CleanAndBuildDialog extends MessageDialog {
 		cfgCheckboxViewer = new ContainerCheckedTreeViewer(area, SWT.BORDER);
 		cfgCheckboxViewer.setContentProvider(new ConfigurationContentProvider());
 		cfgCheckboxViewer.setLabelProvider(new ConfigurationLabelProvider());
-		cfgCheckboxViewer.setInput(projects);
+		cfgCheckboxViewer.setInput(new Object());
 		GridData data = new GridData(GridData.FILL_BOTH);
 		data.horizontalSpan = 2;
 		data.widthHint = IDialogConstants.ENTRY_FIELD_WIDTH;
