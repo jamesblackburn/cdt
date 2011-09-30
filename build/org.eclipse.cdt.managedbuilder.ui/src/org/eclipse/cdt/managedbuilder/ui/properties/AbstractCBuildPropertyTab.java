@@ -11,13 +11,9 @@
 package org.eclipse.cdt.managedbuilder.ui.properties;
 
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
-import org.eclipse.cdt.core.settings.model.ICFileDescription;
 import org.eclipse.cdt.core.settings.model.ICMultiConfigDescription;
-import org.eclipse.cdt.core.settings.model.ICMultiResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
-import org.eclipse.cdt.internal.core.settings.model.MultiResourceDescription;
 import org.eclipse.cdt.managedbuilder.core.IConfiguration;
-import org.eclipse.cdt.managedbuilder.core.IFileInfo;
 import org.eclipse.cdt.managedbuilder.core.IFolderInfo;
 import org.eclipse.cdt.managedbuilder.core.IHoldsOptions;
 import org.eclipse.cdt.managedbuilder.core.IResourceInfo;
@@ -25,8 +21,6 @@ import org.eclipse.cdt.managedbuilder.core.ITool;
 import org.eclipse.cdt.managedbuilder.core.IToolChain;
 import org.eclipse.cdt.managedbuilder.core.ManagedBuildManager;
 import org.eclipse.cdt.managedbuilder.internal.core.MultiConfiguration;
-import org.eclipse.cdt.managedbuilder.internal.core.MultiFileInfo;
-import org.eclipse.cdt.managedbuilder.internal.core.MultiFolderInfo;
 import org.eclipse.cdt.ui.newui.AbstractCPropertyTab;
 import org.eclipse.core.runtime.IPath;
 
@@ -68,44 +62,30 @@ public abstract class AbstractCBuildPropertyTab extends AbstractCPropertyTab {
 	 */
 	public IResourceInfo getResCfg(ICResourceDescription cfgd) {
 		IConfiguration cfg = ManagedBuildManager.getConfigurationForDescription(cfgd.getConfiguration());
-
+		
 		if (page.isForProject()) 
 			return cfg.getRootFolderInfo();
 		
-		ICResourceDescription[] resd = new ICResourceDescription[] { cfgd }; 
+		IPath p = cfgd.getPath();
+		IResourceInfo f = null;
+		f = cfg.getResourceInfo(p, false);
 		
-		// Handle Multiple selection of normal resources
-		if (cfgd instanceof ICMultiResourceDescription)
-			resd = ((MultiResourceDescription)cfgd).fRess;
-		
-		IResourceInfo[] out = resd[0] instanceof ICFileDescription ? new IFileInfo[resd.length] : new IFolderInfo[resd.length];
-
-		for (int i = 0; i < resd.length; i++) {
-			IPath p = resd[i].getPath();
-			IResourceInfo f = null;
-			f = cfg.getResourceInfo(p, false);
-
-			if (f != null && (!p.equals(f.getPath()))) {
-				String s = p.toString().replace('/', '_').replace('\\', '_');
-				if (page.isForFile()) 
-					f = cfg.createFileInfo(p, (IFolderInfo)f, null,
-							f.getId()+ s, f.getName() + s);
-				else
-					f = cfg.createFolderInfo(p, (IFolderInfo)f, 
-							f.getId() + s, f.getName() + s);
-			}
-			if (f == null) {
-				if (page.isForFile()) 
-					f = cfg.createFileInfo(p);
-				else
-					f = cfg.createFolderInfo(p);
-			}
-			out[i] = f;
+		if (f != null && (!p.equals(f.getPath()))) {
+			String s = p.toString().replace('/', '_').replace('\\', '_');
+			if (page.isForFile()) 
+				f = cfg.createFileInfo(p, (IFolderInfo)f, null,
+						f.getId()+ s, f.getName() + s);
+			else
+				f = cfg.createFolderInfo(p, (IFolderInfo)f, 
+						f.getId() + s, f.getName() + s);
 		}
-		if (out.length == 1)
-			return out[0];
-		if (out[0] instanceof IFileInfo)
-			return new MultiFileInfo(out, cfg);
-		return new MultiFolderInfo((IFolderInfo[])out, cfg);
+		if (f == null) {
+			if (page.isForFile()) 
+				f = cfg.createFileInfo(p);
+			
+			else
+				f = cfg.createFolderInfo(p);
+		}
+		return f;
 	}
 }

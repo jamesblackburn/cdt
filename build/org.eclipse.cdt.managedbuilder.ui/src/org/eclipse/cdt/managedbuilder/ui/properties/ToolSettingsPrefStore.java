@@ -12,15 +12,10 @@ package org.eclipse.cdt.managedbuilder.ui.properties;
 
 import java.util.Collection;
 
-import org.eclipse.cdt.core.settings.model.ICFileDescription;
-import org.eclipse.cdt.core.settings.model.ICMultiResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICSettingBase;
-import org.eclipse.cdt.internal.core.settings.model.MultiResourceDescription;
 import org.eclipse.cdt.managedbuilder.core.BuildException;
 import org.eclipse.cdt.managedbuilder.core.IConfiguration;
-import org.eclipse.cdt.managedbuilder.core.IFileInfo;
-import org.eclipse.cdt.managedbuilder.core.IFolderInfo;
 import org.eclipse.cdt.managedbuilder.core.IHoldsOptions;
 import org.eclipse.cdt.managedbuilder.core.IManagedCommandLineGenerator;
 import org.eclipse.cdt.managedbuilder.core.IManagedCommandLineInfo;
@@ -28,8 +23,6 @@ import org.eclipse.cdt.managedbuilder.core.IOption;
 import org.eclipse.cdt.managedbuilder.core.IOptionCategory;
 import org.eclipse.cdt.managedbuilder.core.IResourceInfo;
 import org.eclipse.cdt.managedbuilder.core.ManagedBuildManager;
-import org.eclipse.cdt.managedbuilder.internal.core.MultiFileInfo;
-import org.eclipse.cdt.managedbuilder.internal.core.MultiFolderInfo;
 import org.eclipse.cdt.managedbuilder.internal.core.Option;
 import org.eclipse.cdt.managedbuilder.internal.core.Tool;
 import org.eclipse.cdt.managedbuilder.internal.macros.BuildMacroProvider;
@@ -353,30 +346,18 @@ public class ToolSettingsPrefStore implements IPreferenceStore {
 			cfgd.getType() == ICSettingBase.SETTING_CONFIGURATION) 
 			return cfg.getRootFolderInfo();
 		
-		ICResourceDescription[] resd = new ICResourceDescription[] { cfgd }; 
-		
-		// Handle Multiple selection of normal resources
-		if (cfgd instanceof ICMultiResourceDescription)
-			resd = ((MultiResourceDescription)cfgd).fRess;
-
-		IResourceInfo[] out = resd[0] instanceof ICFileDescription ? new IFileInfo[resd.length] : new IFolderInfo[resd.length];
-
-		for (int i = 0; i < resd.length; i++) {
-			IPath p = resd[i].getPath();
-			IResourceInfo ri = cfg.getResourceInfo(p, true);
-			if (ri != null && p.equals(ri.getPath())) {
-				out[i] =  ri;
-			} else if (cfgd.getType() == ICSettingBase.SETTING_FILE) {
-				out[i] = cfg.createFileInfo(p);
-			} else if (cfgd.getType() == ICSettingBase.SETTING_FOLDER) {
-				out[i] = cfg.createFolderInfo(p);
-			}
+		IPath p = cfgd.getPath();
+		IResourceInfo ri = cfg.getResourceInfo(p, true);
+		if (ri != null && p.equals(ri.getPath())) {
+			return ri;
 		}
-		if (out.length == 1)
-			return out[0];
-		if (out[0] instanceof IFileInfo)
-			return new MultiFileInfo(out, cfg);
-		return new MultiFolderInfo((IFolderInfo[])out, cfg);
+		
+		if (cfgd.getType() == ICSettingBase.SETTING_FILE) {
+			ri = cfg.createFileInfo(p);
+		} else if (cfgd.getType() == ICSettingBase.SETTING_FOLDER) {
+			ri = cfg.createFolderInfo(p);
+		}
+		return ri;
 	}
 	
 }

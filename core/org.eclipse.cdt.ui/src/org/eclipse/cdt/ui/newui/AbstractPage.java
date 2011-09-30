@@ -21,7 +21,6 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -86,26 +85,17 @@ import org.eclipse.cdt.core.model.ICProject;
 import org.eclipse.cdt.core.model.util.CDTListComparator;
 import org.eclipse.cdt.core.settings.model.CConfigurationStatus;
 import org.eclipse.cdt.core.settings.model.ICConfigurationDescription;
-import org.eclipse.cdt.core.settings.model.ICFileDescription;
 import org.eclipse.cdt.core.settings.model.ICFolderDescription;
-import org.eclipse.cdt.core.settings.model.ICLanguageSetting;
-import org.eclipse.cdt.core.settings.model.ICMultiFolderDescription;
 import org.eclipse.cdt.core.settings.model.ICMultiItemsHolder;
 import org.eclipse.cdt.core.settings.model.ICMultiProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICMultiResourceDescription;
 import org.eclipse.cdt.core.settings.model.ICProjectDescription;
 import org.eclipse.cdt.core.settings.model.ICResourceDescription;
-import org.eclipse.cdt.core.settings.model.ICSettingContainer;
-import org.eclipse.cdt.core.settings.model.ICSettingObject;
 import org.eclipse.cdt.core.settings.model.MultiItemsHolder;
-import org.eclipse.cdt.core.settings.model.WriteAccessException;
 import org.eclipse.cdt.ui.CDTSharedImages;
 import org.eclipse.cdt.ui.CUIPlugin;
 import org.eclipse.cdt.ui.PreferenceConstants;
 import org.eclipse.cdt.utils.ui.controls.ControlFactory;
-
-import org.eclipse.cdt.internal.core.settings.model.MultiFileDescription;
-import org.eclipse.cdt.internal.core.settings.model.MultiFolderDescription;
 
 import org.eclipse.cdt.internal.ui.dialogs.OptionalMessageDialog;
 import org.eclipse.cdt.internal.ui.newui.Messages;
@@ -1032,29 +1022,19 @@ implements
 	 *          property page was opened in the selected configuration(s)
 	 */
 	public ICResourceDescription getResDesc(ICConfigurationDescription cf) {
-		// Project level is easy. We're returning the resource descriptions for  "/"
-		// for the passed in configuration descriptions.
+		IAdaptable ad = getElement();
+		
 		if (isForProject()) 
 			return cf.getRootFolderDescription();
-		assert (isForFolder() || isForFile());
-
-		IResource[] ress = (IResource[])getElements();
-		// For Folder or File level resource descriptions, we need to fetch appropriate
-		// resource description from the project configurations of projects that contain
-		// the passed in resources.
-		List<ICResourceDescription> resds = new ArrayList<ICResourceDescription>();
 		ICResourceDescription out = null;
-		for (IResource res : ress) {
-			IPath p = res.getProjectRelativePath();
+		IResource res = (IResource)ad; 
+		IPath p = res.getProjectRelativePath();
+		if (isForFolder() || isForFile()) {
 			if (cf instanceof ICMultiItemsHolder) {
-				// NB (/FIXME) This will create resource configurations in projects which don't include the passed in resource
 				out = cf.getResourceDescription(p, isForFolder()); // sic ! 
 			} else {
-				// If this resource isn't part of this selected configuration, then nothing more to do.
-				if (!res.getProject().equals(cf.getProjectDescription().getProject()))
-					continue;
 				out = cf.getResourceDescription(p, false);
-				if (!p.equals(out.getPath()) ) {
+				if (! p.equals(out.getPath()) ) {
 					try {
 						if (isForFolder())
 							out = cf.createFolderDescription(p, (ICFolderDescription)out);
@@ -1066,12 +1046,6 @@ implements
 					}
 				}
 			}
-			resds.add(out);
-		}
-		if (resds.size() > 1) {
-			out = isForFolder() ? 
-					new MultiFolderDescription(resds.toArray(new ICFolderDescription[resds.size()])) : 
-						new MultiFileDescription(resds.toArray(new ICFileDescription[resds.size()]));
 		}
 		return out;
 	}

@@ -3727,17 +3727,13 @@ public class ManagedBuildManager extends AbstractCExtension {
 		if(cfgDes == null)
 			return null;
 
-		CConfigurationData cfgData = null;
 		if (cfgDes instanceof ICMultiConfigDescription) {
 			ICMultiConfigDescription mcd = (ICMultiConfigDescription)cfgDes;
-			HashSet<ICConfigurationDescription> cfds = new HashSet();
-			for (ICConfigurationDescription cfd : (ICConfigurationDescription[])mcd.getItems()) 
-				cfds.add(cfd);
-			if (cfds.size() > 1)
-				return new MultiConfiguration(cfds.toArray(new ICConfigurationDescription[cfds.size()]));
-			cfgData = cfds.iterator().next().getConfigurationData();
-		} else
-			cfgData = cfgDes.getConfigurationData();
+			ICConfigurationDescription[] cfds = (ICConfigurationDescription[])mcd.getItems();
+			return new MultiConfiguration(cfds);
+		}
+
+		CConfigurationData cfgData = cfgDes.getConfigurationData();
 		if(cfgData instanceof BuildConfigurationData){
 			IConfiguration cfg = ((BuildConfigurationData)cfgData).getConfiguration();
 			if(checkConsistance){
